@@ -161,6 +161,51 @@ create_reminder requires user approval.
 
 The application is responsible for handling approval.
 
+update_reminder
+------------------------------------------------------------
+Update an existing reminder.
+
+Arguments:
+
+{
+  "title": "existing reminder title",
+  "time": "new reminder time"
+}
+
+Use when the user asks to:
+- change a reminder
+- move a reminder
+- reschedule a reminder
+- postpone a reminder
+- change the reminder time
+
+update_reminder requires user approval.
+
+
+delete_reminder
+------------------------------------------------------------
+Delete/cancel an existing reminder.
+
+Arguments:
+
+{
+  "title": "existing reminder title"
+}
+
+Use when the user asks to:
+- delete a reminder
+- remove a reminder
+- cancel a reminder
+
+delete_reminder requires user approval.
+
+
+IMPORTANT REMINDER RULE:
+
+Never silently modify or delete a reminder.
+
+update_reminder and delete_reminder
+must go through the approval firewall.
 
 ============================================================
 CORE PLANNING RULE

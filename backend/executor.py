@@ -4,6 +4,8 @@ from tools import (
     search_web,
     create_task,
     create_reminder,
+    update_reminder,
+    delete_reminder,
     browser_open,
     generate_answer,
 )
@@ -25,6 +27,14 @@ def run_tool(tool_name, arguments):
 
     if tool_name == "generate_answer":
         return generate_answer(**arguments)
+    if tool_name == "update_reminder":
+        return update_reminder(
+        **arguments
+    )
+    if tool_name == "delete_reminder":
+        return delete_reminder(
+        **arguments
+    )
 
     return {
         "status": "error",

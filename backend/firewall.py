@@ -12,7 +12,9 @@ APPROVAL_REQUIRED = {
     "submit_form",
     "purchase",
     "book_ticket",
-    "delete_file"
+    "delete_file",
+    "update_reminder",
+    "delete_reminder",
 }
 
 

@@ -748,8 +748,11 @@ def mark_reminder_triggered(reminder_id):
     conn.commit()
     conn.close()
 
+# ==========================================================
+# GET ALL ACTIVE REMINDERS
+# ==========================================================
 
-def get_reminders(limit=50):
+def get_reminders():
 
     conn = get_connection()
 
@@ -763,10 +766,9 @@ def get_reminders(limit=50):
             created_at,
             triggered_at
         FROM reminders
-        ORDER BY remind_at DESC
-        LIMIT ?
-        """,
-        (limit,)
+        WHERE status = 'pending'
+        ORDER BY remind_at ASC
+        """
     ).fetchall()
 
     conn.close()
@@ -780,5 +782,148 @@ def get_reminders(limit=50):
             "created_at": row["created_at"],
             "triggered_at": row["triggered_at"]
         }
+        for row in rows
+    ]
+
+def get_reminder(reminder_id):
+
+    conn = get_connection()
+
+    row = conn.execute(
+        """
+        SELECT
+            id,
+            title,
+            remind_at,
+            status,
+            created_at,
+            triggered_at
+        FROM reminders
+        WHERE id = ?
+        """,
+        (reminder_id,)
+    ).fetchone()
+
+    conn.close()
+
+    if not row:
+        return None
+
+    return dict(row)
+
+
+# ==========================================================
+# UPDATE REMINDER
+# ==========================================================
+
+def update_reminder_record(
+    reminder_id,
+    title,
+    remind_at
+):
+
+    conn = get_connection()
+
+    conn.execute(
+        """
+        UPDATE reminders
+        SET
+            title = ?,
+            remind_at = ?,
+            status = 'pending',
+            triggered_at = NULL
+        WHERE id = ?
+        AND status = 'pending'
+        """,
+        (
+            title,
+            remind_at,
+            reminder_id,
+        )
+    )
+
+    changed =  conn.total_changes
+
+    conn.commit()
+
+    conn.close()
+
+    if changed == 0:
+
+        return None
+
+    return {
+        "id": reminder_id,
+        "title": title,
+        "remind_at": remind_at,
+        "status": "pending",
+    }
+
+
+# ==========================================================
+# DELETE / CANCEL REMINDER
+# ==========================================================
+
+def delete_reminder_record(
+    reminder_id
+):
+
+    conn = get_connection()
+
+    conn.execute(
+        """
+        UPDATE reminders
+        SET
+            status = 'cancelled'
+        WHERE id = ?
+        AND status = 'pending'
+        """,
+        (
+            reminder_id,
+        )
+    )
+
+    changed = conn.total_changes
+
+    conn.commit()
+
+    conn.close()
+
+    return changed > 0
+
+
+# ==========================================================
+# FIND REMINDER BY TITLE
+# ==========================================================
+
+def find_reminder_by_title(
+    title
+):
+
+    conn = get_connection()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            title,
+            remind_at,
+            status,
+            created_at,
+            triggered_at
+        FROM reminders
+        WHERE status = 'pending'
+        AND LOWER(title) LIKE LOWER(?)
+        ORDER BY remind_at ASC
+        """,
+        (
+            f"%{title}%",
+        )
+    ).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
         for row in rows
     ]

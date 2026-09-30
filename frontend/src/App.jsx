@@ -1292,8 +1292,9 @@ function App() {
 
         <div className="mt-12">
           <ReminderSection
-            reminders={reminders}
-          />
+  reminders={reminders}
+  onReminderChanged={loadReminders}
+/>
         </div>
 
         {/* =====================================================

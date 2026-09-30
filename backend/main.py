@@ -22,6 +22,8 @@ from database import (
     get_goal_executions,
     get_history,
     get_reminders,
+    update_reminder_record,
+    delete_reminder_record,
 )
 
 from reminder_scheduler import (
@@ -964,3 +966,67 @@ def reminders():
         "reminders":
             get_reminders()
     }
+# ==========================================================
+# UPDATE REMINDER
+# ==========================================================
+
+class ReminderUpdateRequest(BaseModel):
+
+    title: str
+
+    time: str
+
+
+@app.put("/reminders/{reminder_id}")
+def update_reminder_endpoint(
+    reminder_id: str,
+    request: ReminderUpdateRequest,
+):
+
+    from tools import update_reminder
+
+    result = update_reminder(
+        reminder_id=reminder_id,
+        title=request.title,
+        time=request.time,
+    )
+
+    if result.get("status") != "success":
+
+        raise HTTPException(
+            status_code=400,
+            detail=result.get(
+                "message",
+                "Failed to update reminder.",
+            ),
+        )
+
+    return result
+
+
+# ==========================================================
+# DELETE REMINDER
+# ==========================================================
+
+@app.delete("/reminders/{reminder_id}")
+def delete_reminder_endpoint(
+    reminder_id: str,
+):
+
+    from tools import delete_reminder
+
+    result = delete_reminder(
+        reminder_id=reminder_id
+    )
+
+    if result.get("status") != "success":
+
+        raise HTTPException(
+            status_code=400,
+            detail=result.get(
+                "message",
+                "Failed to delete reminder.",
+            ),
+        )
+
+    return result

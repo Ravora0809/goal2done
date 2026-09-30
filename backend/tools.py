@@ -7,9 +7,14 @@ from groq import Groq
 from ddgs import DDGS
 from datetime import datetime, timezone
 import dateparser
-
-from database import create_reminder_record
-
+ 
+from database import (
+    create_reminder_record,
+    get_reminder,
+    update_reminder_record,
+    delete_reminder_record,
+    find_reminder_by_title,
+)
 tasks = []
 reminders = []
 
@@ -288,4 +293,280 @@ Return ONLY the final user-facing answer.
             "status": "error",
             "type": "answer",
             "message": str(e)
+        }
+
+
+
+
+# ==========================================================
+# UPDATE REMINDER
+# ==========================================================
+
+def update_reminder(
+    reminder_id=None,
+    title=None,
+    time=None,
+):
+
+    try:
+
+        if not reminder_id and not title:
+
+            return {
+                "status": "error",
+                "type": "reminder",
+                "message": (
+                    "A reminder ID or title "
+                    "is required."
+                ),
+            }
+
+
+        # --------------------------------------------------
+        # Find by title when AI does not know the ID
+        # --------------------------------------------------
+
+        if not reminder_id:
+
+            matches =find_reminder_by_title(
+                    title
+                )
+
+
+            if len(matches) == 0:
+
+                return {
+                    "status": "error",
+                    "type": "reminder",
+                    "message": (
+                        f"No active reminder "
+                        f"matching '{title}' "
+                        f"was found."
+                    ),
+                }
+
+
+            if len(matches) > 1:
+
+                return {
+                    "status": "error",
+                    "type": "reminder",
+                    "message": (
+                        "Multiple reminders "
+                        "matched. Please provide "
+                        "a more specific reminder."
+                    ),
+                    "matches": matches,
+                }
+
+
+            reminder_id =matches[0]["id"]
+
+
+        # --------------------------------------------------
+        # Require new time
+        # --------------------------------------------------
+
+        if not time:
+
+            return {
+                "status": "error",
+                "type": "reminder",
+                "message": (
+                    "A new reminder time "
+                    "is required."
+                ),
+            }
+
+
+        parsed_time = dateparser.parse(
+            time,
+            settings={
+                "PREFER_DATES_FROM":
+                    "future",
+                "RETURN_AS_TIMEZONE_AWARE":
+                    True,
+            },
+        )
+
+
+        if not parsed_time:
+
+            return {
+                "status": "error",
+                "type": "reminder",
+                "message": (
+                    f"Could not understand "
+                    f"reminder time: {time}"
+                ),
+            }
+
+
+        if parsed_time.tzinfo is None:
+
+            parsed_time =parsed_time.replace(
+                    tzinfo=
+                        datetime.now()
+                        .astimezone()
+                        .tzinfo
+                )
+
+
+        parsed_time =parsed_time.astimezone(
+                timezone.utc
+            )
+
+
+        remind_at =parsed_time.isoformat()
+
+
+        # --------------------------------------------------
+        # Preserve old title if title not supplied
+        # --------------------------------------------------
+
+        if not title:
+            existing = get_reminder(reminder_id)
+            if existing:
+                title = existing["title"]
+
+
+        updated =update_reminder_record(
+                reminder_id=
+                    reminder_id,
+
+                title=
+                    title or "Reminder",
+
+                remind_at=
+                    remind_at,
+            )
+
+
+        if not updated:
+
+            return {
+                "status": "error",
+                "type": "reminder",
+                "message": (
+                    "Reminder could not "
+                    "be updated. It may "
+                    "already be triggered "
+                    "or cancelled."
+                ),
+            }
+
+
+        return {
+            "status": "success",
+            "type": "reminder",
+            "action": "updated",
+            "reminder": updated,
+        }
+
+
+    except Exception as e:
+
+        return {
+            "status": "error",
+            "type": "reminder",
+            "message": str(e),
+        }
+
+
+# ==========================================================
+# DELETE REMINDER
+# ==========================================================
+
+def delete_reminder(
+    reminder_id=None,
+    title=None,
+):
+
+    try:
+
+        if not reminder_id and not title:
+
+            return {
+                "status": "error",
+                "type": "reminder",
+                "message": (
+                    "A reminder ID or title "
+                    "is required."
+                ),
+            }
+
+
+        # --------------------------------------------------
+        # Find by title
+        # --------------------------------------------------
+
+        if not reminder_id:
+
+            matches =find_reminder_by_title(
+                    title
+                )
+
+
+            if len(matches) == 0:
+
+                return {
+                    "status": "error",
+                    "type": "reminder",
+                    "message": (
+                        f"No active reminder "
+                        f"matching '{title}' "
+                        f"was found."
+                    ),
+                }
+
+
+            if len(matches) > 1:
+
+                return {
+                    "status": "error",
+                    "type": "reminder",
+                    "message": (
+                        "Multiple reminders "
+                        "matched. Please provide "
+                        "a more specific reminder."
+                    ),
+                    "matches": matches,
+                }
+
+
+            reminder_id =matches[0]["id"]
+
+
+        deleted =delete_reminder_record(
+                reminder_id
+            )
+
+
+        if not deleted:
+
+            return {
+                "status": "error",
+                "type": "reminder",
+                "message": (
+                    "Reminder could not "
+                    "be deleted."
+                ),
+            }
+
+
+        return {
+            "status": "success",
+            "type": "reminder",
+            "action": "deleted",
+            "reminder_id":
+                reminder_id,
+        }
+
+
+    except Exception as e:
+
+        return {
+            "status": "error",
+            "type": "reminder",
+            "message": str(e),
         }
