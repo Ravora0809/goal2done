@@ -1,111 +1,88 @@
+@import "tailwindcss";
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #172033;
+  background: #f7f8fc;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+[data-theme="dark"] {
+  color: #f7f8ff;
+  background: #080b14;
 }
 
-body {
-  margin: 0;
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, textarea, input { font: inherit; }
+button { cursor: pointer; }
+button:focus-visible, textarea:focus-visible { outline: 3px solid #8b5cf6; outline-offset: 3px; }
+#root { min-height: 100svh; }
+::selection { background: #c4b5fd; color: #24104f; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+} 
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-brand: #7c3aed;
+  --color-ink: #172033;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+@layer base {
+  [data-theme="dark"] body { background: #080b14; }
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+@layer components {
+  .app { @apply min-h-screen overflow-x-hidden bg-gradient-to-b from-violet-50 via-slate-50 to-slate-100 dark:from-[#111026] dark:via-[#0a0d18] dark:to-[#080b14]; }
+  .navbar { @apply sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-slate-200/80 bg-white/75 px-5 backdrop-blur-xl dark:border-white/10 dark:bg-[#080b14]/75 sm:px-10 lg:px-20; }
+  .brand { @apply flex items-center gap-3; }
+  .brand-icon { @apply flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-500/25; }
+  .brand-name { @apply text-base font-extrabold tracking-tight text-slate-950 dark:text-white; }
+  .brand-subtitle { @apply mt-0.5 text-[10px] text-slate-500 dark:text-slate-400; }
+  .nav-actions { @apply flex items-center gap-4; }
+  .nav-status { @apply flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400; }
+  .status-dot { @apply size-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,.8)]; }
+  .theme-toggle { @apply flex size-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:-translate-y-0.5 hover:border-violet-300 hover:text-violet-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-violet-400; }
+  .container { @apply mx-auto w-[min(1040px,calc(100%-2.5rem))]; }
+  .hero { @apply py-20 text-center sm:py-28; }
+  .hero-badge { @apply inline-flex items-center gap-2 rounded-full border border-violet-300/60 bg-violet-50 px-3 py-2 text-[10px] font-extrabold tracking-[.18em] text-violet-700 dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-300; }
+  .hero h1 { @apply mx-auto my-6 max-w-4xl text-5xl font-black leading-[.98] tracking-[-.06em] text-slate-950 sm:text-7xl dark:text-white; }
+  .hero h1 span { @apply bg-gradient-to-r from-violet-600 via-fuchsia-500 to-indigo-500 bg-clip-text text-transparent; }
+  .hero-description { @apply mx-auto max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-400; }
+  .goal-box { @apply mx-auto mt-10 max-w-3xl rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-300/30 transition focus-within:border-violet-400 focus-within:ring-4 focus-within:ring-violet-500/10 dark:border-white/10 dark:bg-white/[.06] dark:shadow-black/30; }
+  .goal-box textarea { @apply block min-h-28 w-full resize-y border-0 bg-transparent px-4 py-3 text-sm leading-7 text-slate-900 outline-0 placeholder:text-slate-400 dark:text-white; }
+  .run-button { @apply float-right mr-1 mb-1 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/25 transition hover:-translate-y-0.5 hover:shadow-violet-500/40 disabled:cursor-not-allowed disabled:opacity-40; }
+  .examples { @apply mt-14; }
+  .examples-label, .section-label, .approval-label, .success-label, .rejected-label { @apply mb-3 text-[10px] font-extrabold tracking-[.18em] text-slate-500 dark:text-slate-500; }
+  .example-grid { @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-4; }
+  .example-grid button { @apply min-h-20 rounded-xl border border-slate-200 bg-white/70 p-4 text-left text-xs font-semibold text-slate-700 transition hover:-translate-y-1 hover:border-violet-300 hover:shadow-lg hover:shadow-violet-500/10 dark:border-white/10 dark:bg-white/[.04] dark:text-slate-200; }
+  .example-grid span { @apply mt-1 block text-[10px] font-normal text-slate-500; }
+  .working-card { @apply mx-auto my-20 max-w-2xl rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-white/10 dark:bg-white/[.06] sm:p-14; }
+  .loader-icon, .success-icon, .rejected-icon { @apply mx-auto flex size-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300; }
+  .spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
+  .working-card h2, .result-header h2, .rejected-card h2, .success-card h2 { @apply mt-6 text-2xl font-extrabold tracking-tight text-slate-950 dark:text-white; }
+  .working-card p, .rejected-card p, .success-card p { @apply mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400; }
+  .working-steps { @apply mt-8 text-left; }
+  .working-step { @apply flex items-center gap-3 border-b border-slate-200 py-4 text-sm text-slate-700 last:border-0 dark:border-white/10 dark:text-slate-300; }
+  .working-step-icon { @apply text-violet-500; } .step-check { @apply ml-auto text-emerald-500; }
+  .results { @apply py-16; } .result-header { @apply mb-8 flex flex-col gap-4 border-b border-slate-200 pb-8 sm:flex-row sm:items-end sm:justify-between dark:border-white/10; }
+  .goal-display { @apply max-w-2xl text-sm italic leading-6 text-slate-500 dark:text-slate-400; }
+  .actions-card, .reminders-section, .history-section { @apply mb-6 rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm dark:border-white/10 dark:bg-white/[.04] sm:p-6; }
+  .card-title, .reminders-header { @apply flex items-center gap-3 text-base font-bold text-slate-900 dark:text-white; }
+  .card-title { @apply mb-5 text-violet-600 dark:text-violet-300; } .actions { @apply flex flex-col gap-3; }
+  .action-card, .history-item, .empty-actions, .empty-reminders { @apply rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/[.03]; }
+  .action-row, .history-item { @apply flex items-start gap-3; } .action-icon, .history-icon { @apply flex size-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300; }
+  .action-info, .history-info { @apply flex min-w-0 flex-1 flex-col gap-1; } .action-info strong, .history-info strong { @apply text-sm font-bold text-slate-900 dark:text-white; } .action-info span, .history-info span { @apply truncate text-xs text-slate-500; }
+  .action-status, .history-status { @apply flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400; } .action-result { @apply mt-4 border-t border-slate-200 pt-4 dark:border-white/10; } .result-label, .tool-label { @apply text-[10px] font-extrabold tracking-widest text-slate-500; } .result-list { @apply mt-3 flex flex-col gap-2; } .result-item { @apply rounded-lg bg-white p-3 text-xs dark:bg-white/5; } .result-item strong { @apply block text-sm text-slate-900 dark:text-white; } .result-item p, .result-text { @apply mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600 dark:text-slate-300; } .result-item a { @apply mt-2 inline-block text-xs font-semibold text-violet-600 hover:underline dark:text-violet-300; } .result-object { @apply mt-3 flex flex-col gap-2; } .result-field { @apply flex flex-col gap-1 rounded-lg bg-white p-3 text-xs dark:bg-white/5; } .result-field span { @apply text-slate-500; } .result-field strong { @apply break-words text-slate-800 dark:text-slate-200; }
+  .approval-card { @apply mb-6 rounded-2xl border border-amber-300/70 bg-amber-50/80 p-5 shadow-lg shadow-amber-500/10 dark:border-amber-400/30 dark:bg-amber-400/[.07] sm:p-6; } .approval-header { @apply flex items-center gap-3; } .approval-icon { @apply flex size-11 items-center justify-center rounded-xl bg-amber-200 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300; } .approval-card h3 { @apply text-lg font-extrabold text-slate-950 dark:text-white; } .approval-content { @apply mt-5 border-t border-amber-300/50 pt-5 dark:border-amber-400/20; } .approval-id { @apply mb-4 font-mono text-[10px] text-slate-500; } .approval-warning { @apply flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200; } .approval-action { @apply my-5 rounded-xl bg-white/70 p-4 dark:bg-black/10; } .approval-action strong { @apply mt-1 block text-sm text-slate-900 dark:text-white; } .action-time { @apply mt-1 block text-xs text-slate-500; } .approval-buttons { @apply flex flex-col gap-2 sm:flex-row; } .approve-button, .reject-button, .new-goal-button { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition; } .approve-button { @apply bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50; } .reject-button { @apply border border-slate-300 bg-white text-slate-700 hover:border-red-300 hover:text-red-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300; }
+  .error-card, .rejected-card, .success-card { @apply mb-6 flex items-start gap-4 rounded-2xl border p-5; } .error-card { @apply border-red-300 bg-red-50 text-red-700 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-300; } .rejected-card { @apply border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/[.04]; } .success-card { @apply border-emerald-300 bg-emerald-50 dark:border-emerald-400/30 dark:bg-emerald-400/10; } .success-icon { @apply size-14 shrink-0 bg-emerald-100 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-300; } .new-goal-button { @apply mt-2 border border-slate-300 bg-white text-slate-700 hover:border-violet-400 hover:text-violet-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300; }
+  .reminders-section, .history-section { @apply mt-8; } .reminders-header { @apply mb-5 justify-between; } .reminders-header h2, .history-section h2 { @apply text-xl font-extrabold text-slate-950 dark:text-white; } .reminders-header p { @apply mt-1 text-xs text-slate-500; } .reminder-count { @apply flex size-9 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-700 dark:bg-violet-400/10 dark:text-violet-300; } .empty-reminders { @apply flex items-center gap-3 text-slate-500; } .reminders-list, .history-list { @apply flex flex-col gap-2; } .history-item { @apply items-center; } .history-status { @apply ml-auto; } .history-status.rejected { @apply text-red-500; } .history-status.pending { @apply text-amber-500; }
+  footer { @apply mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-2 border-t border-slate-200 px-5 py-8 text-center text-[10px] text-slate-500 dark:border-white/10; }
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
-}
+@media (max-width: 640px) { .nav-status { @apply hidden; } .hero h1 { @apply text-5xl; } }

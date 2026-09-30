@@ -9,14 +9,13 @@ import {
   Sparkles,
   ArrowRight,
   CheckCircle2,
-  Clock3,
   AlertTriangle,
-  Search,
   ListChecks,
-  Globe,
   ShieldCheck,
   Loader2,
   XCircle,
+  Sun,
+  Moon,
 }
 from "lucide-react";
 import "./App.css";
@@ -28,7 +27,13 @@ const [loading, setLoading] = useState(false);
 const [plan, setPlan] = useState(null);
 const [approvalLoading, setApprovalLoading] = useState(false);
 const [history, setHistory] = useState([]);
-const [reminders, setReminders] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [theme, setTheme] = useState(() => localStorage.getItem("goal2done-theme") || "dark");
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("goal2done-theme", theme);
+  }, [theme]);
 
   // Load execution history when app starts
   useEffect(() => {
@@ -316,9 +321,14 @@ const [reminders, setReminders] = useState([]);
 
         </div>
 
-        <div className="nav-status">
-          <span className="status-dot"></span>
-          Agent Online
+        <div className="nav-actions">
+          <div className="nav-status">
+            <span className="status-dot"></span>
+            Agent Online
+          </div>
+          <button className="theme-toggle" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
         </div>
 
       </nav>
