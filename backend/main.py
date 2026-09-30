@@ -23,18 +23,34 @@ from database import (
     get_goal_executions,
     get_history
 )
+from contextlib import asynccontextmanager
 
+from reminder_scheduler import (
+    start_reminder_scheduler,
+    stop_reminder_scheduler
+)
 
 # ==========================================
 # APP
 # ==========================================
+ 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_reminder_scheduler()
+
+    yield
+
+    stop_reminder_scheduler()
+
 
 app = FastAPI(
     title="Goal2Done",
     description="Autonomous personal operations agent",
-    version="0.2"
+    version="0.2",
+    lifespan=lifespan,
 )
-
 
 # ==========================================
 # CORS
@@ -56,8 +72,7 @@ app.add_middleware(
 # ==========================================
 
 init_db()
-start_reminder_scheduler()
-
+ 
 
 # ==========================================
 # MODELS
@@ -532,3 +547,4 @@ def reminders():
     return {
         "reminders": get_reminders()
     }
+ 

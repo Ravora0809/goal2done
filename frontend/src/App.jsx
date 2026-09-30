@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-
+import ReminderSection from "./components/ReminderSection";
+import ExecutionHistory from "./components/ExecutionHistory";
+import ClarificationCard from "./components/ClarificationCard";
+import ActionCard from "./components/ActionCard";
+import StatusBadge from "./components/StatusBadge";
+import WorkingStep from "./components/WorkingStep";
 import {
   Sparkles,
   ArrowRight,
@@ -12,23 +17,24 @@ import {
   ShieldCheck,
   Loader2,
   XCircle,
-} from "lucide-react";
-
+}
+from "lucide-react";
 import "./App.css";
-
 const API = "http://127.0.0.1:8000";
 
 function App() {
-  const [goal, setGoal] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [plan, setPlan] = useState(null);
-  const [approvalLoading, setApprovalLoading] = useState(false);
-  const [history, setHistory] = useState([]);
+const [goal, setGoal] = useState("");
+const [loading, setLoading] = useState(false);
+const [plan, setPlan] = useState(null);
+const [approvalLoading, setApprovalLoading] = useState(false);
+const [history, setHistory] = useState([]);
+const [reminders, setReminders] = useState([]);
 
   // Load execution history when app starts
   useEffect(() => {
-    loadHistory();
-  }, []);
+  loadHistory();
+  loadReminders();
+}, []);
 
   // =========================================================
   // RUN GOAL
@@ -61,6 +67,7 @@ function App() {
 
       // Refresh history after execution
       await loadHistory();
+      await loadReminders();
     } catch (error) {
       console.error(error);
 
@@ -95,6 +102,22 @@ function App() {
       console.error("Could not load history:", error);
     }
   }
+
+  async function loadReminders() {
+  try {
+    const response = await fetch(`${API}/reminders`);
+
+    if (!response.ok) {
+      throw new Error("Failed to load reminders");
+    }
+
+    const data = await response.json();
+
+    setReminders(data.reminders || []);
+  } catch (error) {
+    console.error("Could not load reminders:", error);
+  }
+}
 
   // =========================================================
   // APPROVE ACTION
@@ -163,6 +186,7 @@ function App() {
 
       // Refresh history
       await loadHistory();
+      await loadReminders();
     } catch (error) {
       console.error("Approval error:", error);
       alert(error.message || "Approval failed.");
@@ -243,6 +267,7 @@ function App() {
 
       // Refresh history
       await loadHistory();
+      await loadReminders();
     } catch (error) {
       console.error("Rejection error:", error);
       alert(error.message || "Rejection failed.");
@@ -841,9 +866,12 @@ function App() {
             HISTORY
         =================================================== */}
 
-        <ExecutionHistory
-          history={history}
-        />
+        <ReminderSection
+  reminders={reminders}
+/>
+<ExecutionHistory
+  history={history}
+/>
 
       </main>
 
@@ -877,628 +905,14 @@ function App() {
 }
 
 
-/* ===========================================================
-   CLARIFICATION CARD
-=========================================================== */
+ 
+ 
 
-function ClarificationCard({
-  plan,
-  goal,
-  setGoal,
-  setPlan,
-  setLoading,
-}) {
 
-  const [answers, setAnswers] =
-    useState(
-      plan.questions?.map(() => "") || []
-    );
+ 
 
-  const [submitting, setSubmitting] =
-    useState(false);
-
-
-  function updateAnswer(index, value) {
-
-    setAnswers((previous) => {
-
-      const updated = [...previous];
-
-      updated[index] = value;
-
-      return updated;
-    });
-
-  }
-
-
-  async function continueGoal() {
-
-    const unanswered =
-      answers.some(
-        (answer) => !answer.trim()
-      );
-
-    if (unanswered) {
-
-      alert(
-        "Please answer all questions."
-      );
-
-      return;
-    }
-
-
-    const additionalInformation =
-      plan.questions
-        .map(
-          (question, index) =>
-            `Question: ${question}\nAnswer: ${answers[index]}`
-        )
-        .join("\n\n");
-
-
-    const updatedGoal = `
-Original goal:
-${goal}
-
-Additional information provided by the user:
-${additionalInformation}
-`;
-
-
-    setSubmitting(true);
-    setLoading(true);
-    setPlan(null);
-
-
-    try {
-
-      const response =
-        await fetch(`${API}/goal`, {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            goal: updatedGoal,
-          }),
-        });
-
-
-      const data =
-        await response.json();
-
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail ||
-            "Failed to update goal"
-        );
-      }
-
-
-      setPlan(data);
-
-    } catch (error) {
-
-      console.error(error);
-
-      setPlan({
-        status: "error",
-        goal: updatedGoal,
-        actions: [],
-        approvals_required: [],
-        error:
-          error.message ||
-          "Could not connect to Goal2Done backend.",
-      });
-
-    } finally {
-
-      setSubmitting(false);
-      setLoading(false);
-
-    }
-
-  }
-
-
-  return (
-    <div className="clarification-card">
-
-      <div className="clarification-header">
-
-        <div className="clarification-icon">
-          <AlertTriangle size={22} />
-        </div>
-
-        <div>
-
-          <div className="clarification-label">
-            MORE INFORMATION NEEDED
-          </div>
-
-          <h3>
-            I need a few details before I
-            can execute this goal.
-          </h3>
-
-        </div>
-
-      </div>
-
-
-      <div className="questions">
-
-        {plan.questions?.map(
-          (question, index) => (
-
-            <div
-              className="question"
-              key={index}
-            >
-
-              <div className="question-number">
-                {index + 1}
-              </div>
-
-              <div className="question-body">
-
-                <label>
-                  {question}
-                </label>
-
-                <input
-                  type="text"
-                  value={
-                    answers[index]
-                  }
-                  onChange={(e) =>
-                    updateAnswer(
-                      index,
-                      e.target.value
-                    )
-                  }
-                  placeholder="Your answer..."
-                />
-
-              </div>
-
-            </div>
-
-          )
-        )}
-
-      </div>
-
-
-      <div className="clarification-actions">
-
-        <button
-          className="continue-button"
-          onClick={continueGoal}
-          disabled={submitting}
-        >
-
-          {submitting ? (
-            <>
-              <Loader2
-                size={17}
-                className="spin"
-              />
-
-              Updating goal...
-            </>
-          ) : (
-            <>
-              Continue
-
-              <ArrowRight size={17} />
-            </>
-          )}
-
-        </button>
-
-
-        <button
-          className="cancel-button"
-          onClick={() => {
-            setPlan(null);
-            setGoal("");
-          }}
-          disabled={submitting}
-        >
-          Cancel
-        </button>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-/* ===========================================================
-   WORKING STEP
-=========================================================== */
-
-function WorkingStep({
-  icon,
-  text,
-}) {
-
-  return (
-    <div className="working-step">
-
-      <div className="working-step-icon">
-        {icon}
-      </div>
-
-      <span>
-        {text}
-      </span>
-
-      <CheckCircle2
-        size={16}
-        className="step-check"
-      />
-
-    </div>
-  );
-}
-
-
-/* ===========================================================
-   STATUS BADGE
-=========================================================== */
-
-function StatusBadge({
-  status,
-}) {
-
-  if (status === "completed") {
-
-    return (
-      <div className="status-badge completed">
-
-        <CheckCircle2 size={15} />
-
-        Completed
-
-      </div>
-    );
-  }
-
-
-  if (
-    status ===
-    "waiting_for_approval"
-  ) {
-
-    return (
-      <div className="status-badge waiting">
-
-        <Clock3 size={15} />
-
-        Awaiting approval
-
-      </div>
-    );
-  }
-
-
-  if (
-    status ===
-    "needs_clarification"
-  ) {
-
-    return (
-      <div className="status-badge clarification">
-
-        <AlertTriangle size={15} />
-
-        More information needed
-
-      </div>
-    );
-  }
-
-
-  if (status === "rejected") {
-
-    return (
-      <div className="status-badge rejected">
-
-        <XCircle size={15} />
-
-        Rejected
-
-      </div>
-    );
-  }
-
-
-  if (
-    status ===
-    "verification_failed"
-  ) {
-
-    return (
-      <div className="status-badge rejected">
-
-        <XCircle size={15} />
-
-        Verification failed
-
-      </div>
-    );
-  }
-
-
-  if (status === "error") {
-
-    return (
-      <div className="status-badge rejected">
-
-        <XCircle size={15} />
-
-        Error
-
-      </div>
-    );
-  }
-
-
-  return (
-    <div className="status-badge">
-      Working
-    </div>
-  );
-}
-
-
-/* ===========================================================
-   ACTION CARD
-=========================================================== */
-
-function ActionCard({
-  action,
-}) {
-
-  const verified =
-    action.verification?.verified === true;
-
-
-  const awaiting =
-    action.verification?.status ===
-    "awaiting_approval";
-
-
-  const rejected =
-    action.verification?.status ===
-    "rejected";
-
-
-  const icon =
-    action.tool === "search_web"
-      ? <Search size={17} />
-      : action.tool === "browser_open"
-      ? <Globe size={17} />
-      : action.tool === "create_task"
-      ? <ListChecks size={17} />
-      : <Clock3 size={17} />;
-
-
-  return (
-    <div className="action-row">
-
-      <div className="action-icon">
-        {icon}
-      </div>
-
-
-      <div className="action-info">
-
-        <strong>
-          {formatToolName(
-            action.tool
-          )}
-        </strong>
-
-        <span>
-
-          {action.arguments?.query ||
-            action.arguments?.title ||
-            action.arguments?.url ||
-            ""}
-
-        </span>
-
-      </div>
-
-
-      <div className="action-status">
-
-        {verified && (
-          <>
-            <CheckCircle2 size={16} />
-            Verified
-          </>
-        )}
-
-
-        {awaiting && (
-          <>
-            <Clock3 size={16} />
-            Waiting
-          </>
-        )}
-
-
-        {rejected && (
-          <>
-            <XCircle size={16} />
-            Rejected
-          </>
-        )}
-
-
-        {!verified &&
-          !awaiting &&
-          !rejected && (
-            <>
-              <Clock3 size={16} />
-              Processing
-            </>
-          )}
-
-      </div>
-
-    </div>
-  );
-}
-
-
-/* ===========================================================
-   EXECUTION HISTORY
-=========================================================== */
-
-function ExecutionHistory({
-  history,
-}) {
-
-  if (!history || history.length === 0) {
-    return null;
-  }
-
-
-  return (
-    <section className="history-section">
-
-      <div className="section-label">
-        EXECUTION HISTORY
-      </div>
-
-      <h2>
-        Recent activity
-      </h2>
-
-
-      <div className="history-list">
-
-        {history.map(
-          (item, index) => {
-
-            const verification =
-              item.verification || {};
-
-
-            const verified =
-              verification.verified === true;
-
-
-            const rejected =
-              item.status === "rejected" ||
-              verification.status ===
-                "rejected";
-
-
-            return (
-              <div
-                className="history-item"
-                key={
-                  item.execution_id ||
-                  index
-                }
-              >
-
-                <div className="history-icon">
-
-                  {verified ? (
-                    <CheckCircle2
-                      size={18}
-                    />
-                  ) : rejected ? (
-                    <XCircle size={18} />
-                  ) : (
-                    <Clock3 size={18} />
-                  )}
-
-                </div>
-
-
-                <div className="history-info">
-
-                  <strong>
-                    {formatToolName(
-                      item.tool ||
-                        "Unknown action"
-                    )}
-                  </strong>
-
-                  <span>
-                    {item.goal ||
-                      item.arguments?.title ||
-                      item.arguments?.query ||
-                      ""}
-                  </span>
-
-                </div>
-
-
-                <div
-                  className={`history-status ${
-                    verified
-                      ? "verified"
-                      : rejected
-                      ? "rejected"
-                      : "pending"
-                  }`}
-                >
-
-                  {verified
-                    ? "Verified"
-                    : rejected
-                    ? "Rejected"
-                    : "Pending"}
-
-                </div>
-
-              </div>
-            );
-          }
-        )}
-
-      </div>
-
-    </section>
-  );
-}
-
-
-/* ===========================================================
-   FORMAT TOOL NAME
-=========================================================== */
-
-function formatToolName(tool) {
-
-  if (!tool) {
-    return "Unknown action";
-  }
-
-
-  return tool
-    .replaceAll("_", " ")
-    .replace(
-      /\b\w/g,
-      (letter) =>
-        letter.toUpperCase()
-    );
-}
-
+ 
+ 
+ 
 
 export default App;
