@@ -1,124 +1,239 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-
-from verifier import verify_action
-from planner import plan_goal
-from executor import execute_tool
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from reminder_scheduler import start_reminder_scheduler
+from planner import plan_goal
+from executor import execute_tool, run_tool
+from verifier import verify_action
+from database import get_reminders
+
+from firewall import requires_approval
+
+from database import (
+    init_db,
+    create_goal,
+    update_goal_status,
+    get_goal,
+    create_execution,
+    update_execution,
+    get_execution,
+    create_approval,
+    get_approval,
+    resolve_approval,
+    get_goal_executions,
+    get_history
+)
+
+
+# ==========================================
+# APP
+# ==========================================
 
 app = FastAPI(
     title="Goal2Done",
     description="Autonomous personal operations agent",
-    version="0.1"
+    version="0.2"
 )
+
+
+# ==========================================
+# CORS
+# ==========================================
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ============================================================
-# REQUEST MODELS
-# ============================================================
+
+# ==========================================
+# DATABASE
+# ==========================================
+
+init_db()
+start_reminder_scheduler()
+
+
+# ==========================================
+# MODELS
+# ==========================================
 
 class GoalRequest(BaseModel):
     goal: str
 
 
 class ApprovalRequest(BaseModel):
-    tool: str
-    arguments: dict
-    
-    
+    approval_id: str
+
+
 class RejectRequest(BaseModel):
-    tool: str
-    arguments: dict
+    approval_id: str
 
 
-# ============================================================
-# TEMPORARY APPROVAL STORAGE
-# ============================================================
-
-pending_approvals = []
-
-
-# ============================================================
+# ==========================================
 # ROOT
-# ============================================================
+# ==========================================
 
 @app.get("/")
 def root():
 
     return {
         "name": "Goal2Done",
-        "status": "running"
+        "status": "running",
+        "version": "0.2"
     }
 
 
-# ============================================================
-# PROCESS USER GOAL
-# ============================================================
+# ==========================================
+# CREATE GOAL
+# ==========================================
 
 @app.post("/goal")
 def process_goal(request: GoalRequest):
 
-    # --------------------------------------------------------
-    # 1. Generate plan using Groq
-    # --------------------------------------------------------
+    # --------------------------------------
+    # Ask Groq to create plan
+    # --------------------------------------
 
     plan = plan_goal(request.goal)
 
-    # --------------------------------------------------------
-    # 2. Check whether planner needs more information
-    # --------------------------------------------------------
+    # --------------------------------------
+    # Missing information
+    # --------------------------------------
 
     if plan.get("needs_clarification"):
 
         return {
             "goal": request.goal,
             "status": "needs_clarification",
-            "questions": plan.get("questions", []),
+            "questions": plan.get(
+                "questions",
+                []
+            ),
             "actions": [],
             "approvals_required": []
         }
 
-    # --------------------------------------------------------
-    # 3. Execute planned actions
-    # --------------------------------------------------------
+    # --------------------------------------
+    # Create persistent goal
+    # --------------------------------------
+
+    goal_id = create_goal(
+        request.goal
+    )
 
     actions = []
     approvals = []
 
-    for planned_action in plan["actions"]:
+    # --------------------------------------
+    # Execute plan
+    # --------------------------------------
+
+    for planned_action in plan.get(
+        "actions",
+        []
+    ):
 
         tool_name = planned_action["tool"]
-        arguments = planned_action["arguments"]
 
-        # ----------------------------------------------------
-        # Execute tool
-        # ----------------------------------------------------
+        arguments = planned_action[
+            "arguments"
+        ]
+
+        # ----------------------------------
+        # Risky action
+        # ----------------------------------
+
+        if requires_approval(tool_name):
+
+            execution_id = create_execution(
+                goal_id=goal_id,
+                tool=tool_name,
+                arguments=arguments,
+                status="pending_approval"
+            )
+
+            approval_id = create_approval(
+                execution_id
+            )
+
+            result = {
+                "status": "approval_required",
+                "risk": "medium",
+                "message": (
+                    f"Goal2Done wants to "
+                    f"execute {tool_name}"
+                ),
+                "approval_id": approval_id
+            }
+
+            verification = verify_action(
+                tool_name,
+                result
+            )
+
+            update_execution(
+                execution_id,
+                "pending_approval",
+                result,
+                verification
+            )
+
+            action = {
+                "execution_id": execution_id,
+                "approval_id": approval_id,
+                "tool": tool_name,
+                "arguments": arguments,
+                "result": result,
+                "verification": verification
+            }
+
+            actions.append(action)
+            approvals.append(action)
+
+            continue
+
+        # ----------------------------------
+        # Safe action
+        # ----------------------------------
+
+        execution_id = create_execution(
+            goal_id=goal_id,
+            tool=tool_name,
+            arguments=arguments,
+            status="executing"
+        )
 
         result = execute_tool(
             tool_name,
             arguments
         )
 
-        # ----------------------------------------------------
-        # Verify result
-        # ----------------------------------------------------
-
         verification = verify_action(
             tool_name,
             result
         )
 
-        # ----------------------------------------------------
-        # Build action result
-        # ----------------------------------------------------
+        execution_status = (
+            "completed"
+            if verification["verified"]
+            else "failed"
+        )
+
+        update_execution(
+            execution_id,
+            execution_status,
+            result,
+            verification
+        )
 
         action = {
+            "execution_id": execution_id,
             "tool": tool_name,
             "arguments": arguments,
             "result": result,
@@ -127,189 +242,293 @@ def process_goal(request: GoalRequest):
 
         actions.append(action)
 
-        # ----------------------------------------------------
-        # Handle approval-required actions
-        # ----------------------------------------------------
-
-        if result.get("status") == "approval_required":
-
-            approvals.append(action)
-
-            pending_approvals.append({
-                "tool": tool_name,
-                "arguments": arguments
-            })
-
-    # --------------------------------------------------------
-    # 4. Determine overall status
-    # --------------------------------------------------------
+    # ======================================
+    # DETERMINE GOAL STATUS
+    # ======================================
 
     if approvals:
 
-        status = "waiting_for_approval"
+        goal_status = "waiting_for_approval"
 
     else:
 
-        # Check whether all actions were verified
         all_verified = all(
             action["verification"]["verified"]
             for action in actions
         )
 
-        if all_verified:
-            status = "completed"
-        else:
-            status = "verification_failed"
+        goal_status = (
+            "completed"
+            if all_verified
+            else "verification_failed"
+        )
 
-    # --------------------------------------------------------
-    # 5. Return response
-    # --------------------------------------------------------
+    update_goal_status(
+        goal_id,
+        goal_status
+    )
 
     return {
+        "goal_id": goal_id,
         "goal": request.goal,
-        "status": status,
+        "status": goal_status,
         "actions": actions,
         "approvals_required": approvals
     }
 
 
-# ============================================================
-# APPROVE ACTION
-# ============================================================
+# ==========================================
+# APPROVE
+# ==========================================
 
 @app.post("/approve")
-def approve_action(request: ApprovalRequest):
+def approve_action(
+    request: ApprovalRequest
+):
 
-    approval = None
+    approval = get_approval(
+        request.approval_id
+    )
 
-    # --------------------------------------------------------
-    # Find matching pending approval
-    # --------------------------------------------------------
-
-    for item in pending_approvals:
-
-        if (
-            item["tool"] == request.tool
-            and item["arguments"] == request.arguments
-        ):
-
-            approval = item
-            break
-
-    # --------------------------------------------------------
-    # Approval not found
-    # --------------------------------------------------------
-
-    if approval is None:
+    if not approval:
 
         raise HTTPException(
             status_code=404,
-            detail="Approval request not found"
+            detail="Approval not found"
         )
 
-    # --------------------------------------------------------
-    # Remove approval from pending list
-    # --------------------------------------------------------
+    if approval["approval_status"] != "pending":
 
-    pending_approvals.remove(approval)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This approval has already "
+                "been resolved."
+            )
+        )
 
-    # --------------------------------------------------------
-    # Execute approved action
-    # --------------------------------------------------------
+    execution_id = approval[
+        "execution_id"
+    ]
 
-    result = execute_approved_tool(
-        request.tool,
-        request.arguments
+    tool_name = approval["tool"]
+
+    arguments = approval["arguments"]
+
+    # --------------------------------------
+    # Mark approval approved
+    # --------------------------------------
+
+    resolve_approval(
+        request.approval_id,
+        "approved"
     )
 
-    # --------------------------------------------------------
-    # Verify approved action
-    # --------------------------------------------------------
+    # --------------------------------------
+    # Execute
+    # --------------------------------------
+
+    result = run_tool(
+        tool_name,
+        arguments
+    )
 
     verification = verify_action(
-        request.tool,
+        tool_name,
         result
     )
 
-    # --------------------------------------------------------
-    # Return final result
-    # --------------------------------------------------------
+    execution_status = (
+        "completed"
+        if verification["verified"]
+        else "failed"
+    )
+
+    update_execution(
+        execution_id,
+        execution_status,
+        result,
+        verification
+    )
+
+    # --------------------------------------
+    # Update goal status
+    # --------------------------------------
+
+    goal_id = approval["goal_id"]
+
+    executions = get_goal_executions(
+        goal_id
+    )
+
+    if any(
+        execution["status"]
+        == "pending_approval"
+        for execution in executions
+    ):
+
+        goal_status = (
+            "waiting_for_approval"
+        )
+
+    elif all(
+        execution["status"]
+        == "completed"
+        for execution in executions
+    ):
+
+        goal_status = "completed"
+
+    else:
+
+        goal_status = "verification_failed"
+
+    update_goal_status(
+        goal_id,
+        goal_status
+    )
 
     return {
-        "status": (
-            "completed"
-            if verification["verified"]
-            else "verification_failed"
+        "status": goal_status,
+        "message": (
+            "Action approved and executed."
         ),
-        "message": "Action approved and executed.",
+        "goal_id": goal_id,
         "action": {
-            "tool": request.tool,
-            "arguments": request.arguments,
+            "execution_id": execution_id,
+            "approval_id": request.approval_id,
+            "tool": tool_name,
+            "arguments": arguments,
             "result": result,
             "verification": verification
         }
     }
 
+
+# ==========================================
+# REJECT
+# ==========================================
+
 @app.post("/reject")
-def reject_action(request: RejectRequest):
+def reject_action(
+    request: RejectRequest
+):
 
-    rejection = None
+    approval = get_approval(
+        request.approval_id
+    )
 
-    for item in pending_approvals:
-        if (
-            item["tool"] == request.tool
-            and item["arguments"] == request.arguments
-        ):
-            rejection = item
-            break
+    if not approval:
 
-    if rejection is None:
         raise HTTPException(
             status_code=404,
-            detail="Approval request not found"
+            detail="Approval not found"
         )
 
-    pending_approvals.remove(rejection)
+    if approval["approval_status"] != "pending":
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This approval has already "
+                "been resolved."
+            )
+        )
+
+    # --------------------------------------
+    # Reject
+    # --------------------------------------
+
+    resolve_approval(
+        request.approval_id,
+        "rejected"
+    )
+
+    update_execution(
+        approval["execution_id"],
+        "rejected",
+        {
+            "status": "rejected",
+            "message": (
+                "Action rejected by user."
+            )
+        },
+        {
+            "verified": False,
+            "status": "rejected",
+            "message": (
+                "Action was rejected by the user."
+            )
+        }
+    )
+
+    # --------------------------------------
+    # Update goal
+    # --------------------------------------
+
+    update_goal_status(
+        approval["goal_id"],
+        "rejected"
+    )
 
     return {
         "status": "rejected",
-        "message": "Action was rejected by the user.",
+        "goal_id": approval["goal_id"],
+        "message": (
+            "Action was rejected by the user."
+        ),
         "action": {
-            "tool": request.tool,
-            "arguments": request.arguments
+            "execution_id":
+                approval["execution_id"],
+            "approval_id":
+                request.approval_id,
+            "tool":
+                approval["tool"],
+            "arguments":
+                approval["arguments"]
         }
     }
 
-# ============================================================
-# EXECUTE APPROVED TOOL
-# ============================================================
 
-def execute_approved_tool(tool_name, arguments):
+# ==========================================
+# GOAL HISTORY
+# ==========================================
 
-    from tools import (
-        search_web,
-        create_task,
-        create_reminder,
-        browser_open
-    )
+@app.get("/history")
+def history():
 
-    if tool_name == "search_web":
+    return {
+        "history": get_history()
+    }
 
-        return search_web(**arguments)
 
-    if tool_name == "create_task":
+# ==========================================
+# SINGLE GOAL HISTORY
+# ==========================================
 
-        return create_task(**arguments)
+@app.get("/history/{goal_id}")
+def goal_history(
+    goal_id: str
+):
 
-    if tool_name == "create_reminder":
+    goal = get_goal(goal_id)
 
-        return create_reminder(**arguments)
+    if not goal:
 
-    if tool_name == "browser_open":
+        raise HTTPException(
+            status_code=404,
+            detail="Goal not found"
+        )
 
-        return browser_open(**arguments)
+    return {
+        "goal": goal,
+        "executions":
+            get_goal_executions(goal_id)
+    }
+    
+@app.get("/reminders")
+def reminders():
 
-    raise HTTPException(
-        status_code=400,
-        detail=f"Unknown tool: {tool_name}"
-    )
+    return {
+        "reminders": get_reminders()
+    }

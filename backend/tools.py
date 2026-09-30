@@ -7,6 +7,10 @@ reminders = []
 # ============================================================
 
 from ddgs import DDGS
+from datetime import datetime, timezone
+import dateparser
+
+from database import create_reminder_record
 
 
 def search_web(query: str):
@@ -71,21 +75,55 @@ def create_task(title: str):
 # ============================================================
 
 def create_reminder(title: str, time: str):
+    try:
+        parsed_time = dateparser.parse(
+            time,
+            settings={
+                "PREFER_DATES_FROM": "future",
+                "RETURN_AS_TIMEZONE_AWARE": True
+            }
+        )
 
-    reminder = {
-        "id": len(reminders) + 1,
-        "title": title,
-        "time": time
-    }
+        if not parsed_time:
+            return {
+                "status": "error",
+                "type": "reminder",
+                "message": f"Could not understand reminder time: {time}"
+            }
 
-    reminders.append(reminder)
+        # Convert to UTC for consistent storage
+        if parsed_time.tzinfo is None:
+            parsed_time = parsed_time.replace(
+                tzinfo=datetime.now().astimezone().tzinfo
+            )
 
-    return {
-        "status": "success",
-        "type": "reminder",
-        "reminder": reminder
-    }
+        parsed_time = parsed_time.astimezone(timezone.utc)
 
+        remind_at = parsed_time.isoformat()
+
+        reminder = create_reminder_record(
+            title=title,
+            remind_at=remind_at
+        )
+
+        return {
+            "status": "success",
+            "type": "reminder",
+            "reminder": {
+                "id": reminder["id"],
+                "title": reminder["title"],
+                "time": time,
+                "remind_at": reminder["remind_at"],
+                "status": reminder["status"]
+            }
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "type": "reminder",
+            "message": str(e)
+        }
 
 # ============================================================
 # BROWSER

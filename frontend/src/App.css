@@ -809,3 +809,9 @@ footer span {
 .cancel-button:hover {
   background: #2c2d36;
 }
+.approval-id {
+  margin-top: 12px;
+  color: #555965;
+  font-family: monospace;
+  font-size: 10px;
+}
