@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 DB_PATH = "goal2done.db"
 
 
+# ==========================================================
+# CONNECTION
+# ==========================================================
+
 def get_connection():
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
@@ -17,14 +21,18 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+# ==========================================================
+# DATABASE INITIALIZATION
+# ==========================================================
+
 def init_db():
 
     connection = get_connection()
     cursor = connection.cursor()
 
-    # -----------------------------
-    # Goals
-    # -----------------------------
+    # ======================================================
+    # GOALS
+    # ======================================================
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS goals (
@@ -36,9 +44,32 @@ def init_db():
         )
     """)
 
-    # -----------------------------
-    # Executions
-    # -----------------------------
+    # ------------------------------------------------------
+    # Migration for clarification support
+    # ------------------------------------------------------
+
+    columns = {
+        row["name"]
+        for row in cursor.execute(
+            "PRAGMA table_info(goals)"
+        ).fetchall()
+    }
+
+    if "clarification_questions" not in columns:
+        cursor.execute("""
+            ALTER TABLE goals
+            ADD COLUMN clarification_questions TEXT
+        """)
+
+    if "clarification_answer" not in columns:
+        cursor.execute("""
+            ALTER TABLE goals
+            ADD COLUMN clarification_answer TEXT
+        """)
+
+    # ======================================================
+    # EXECUTIONS
+    # ======================================================
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS executions (
@@ -57,9 +88,9 @@ def init_db():
         )
     """)
 
-    # -----------------------------
-    # Approvals
-    # -----------------------------
+    # ======================================================
+    # APPROVALS
+    # ======================================================
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS approvals (
@@ -73,31 +104,29 @@ def init_db():
             REFERENCES executions(id)
         )
     """)
-    
-    #---------------------------------
-    # Reminders
-    #---------------------------------
-    
-    cursor.execute(
-    """
-    CREATE TABLE IF NOT EXISTS reminders (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        remind_at TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        created_at TEXT NOT NULL,
-        triggered_at TEXT
-    )
-    """
-)
+
+    # ======================================================
+    # REMINDERS
+    # ======================================================
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reminders (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            remind_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            triggered_at TEXT
+        )
+    """)
 
     connection.commit()
     connection.close()
 
 
-# ==========================================
+# ==========================================================
 # GOALS
-# ==========================================
+# ==========================================================
 
 def create_goal(goal: str):
 
@@ -109,15 +138,25 @@ def create_goal(goal: str):
     connection.execute(
         """
         INSERT INTO goals
-        (id, goal, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        (
+            id,
+            goal,
+            status,
+            created_at,
+            updated_at,
+            clarification_questions,
+            clarification_answer
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             goal_id,
             goal,
             "planning",
             timestamp,
-            timestamp
+            timestamp,
+            None,
+            None
         )
     )
 
@@ -148,6 +187,63 @@ def update_goal_status(goal_id: str, status: str):
     connection.close()
 
 
+def save_clarification(
+    goal_id: str,
+    questions: list
+):
+
+    connection = get_connection()
+
+    connection.execute(
+        """
+        UPDATE goals
+        SET
+            status = ?,
+            clarification_questions = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            "needs_clarification",
+            json.dumps(questions),
+            now(),
+            goal_id
+        )
+    )
+
+    connection.commit()
+    connection.close()
+
+
+def save_clarification_answer(
+    goal_id: str,
+    answer: str
+):
+
+    connection = get_connection()
+
+    connection.execute(
+        """
+        UPDATE goals
+        SET
+            clarification_answer = ?,
+            clarification_questions = NULL,
+            status = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            answer,
+            "planning",
+            now(),
+            goal_id
+        )
+    )
+
+    connection.commit()
+    connection.close()
+
+
 def get_goal(goal_id: str):
 
     connection = get_connection()
@@ -163,12 +259,25 @@ def get_goal(goal_id: str):
 
     connection.close()
 
-    return dict(row) if row else None
+    if not row:
+        return None
+
+    data = dict(row)
+
+    if data.get("clarification_questions"):
+        try:
+            data["clarification_questions"] = json.loads(
+                data["clarification_questions"]
+            )
+        except json.JSONDecodeError:
+            data["clarification_questions"] = []
+
+    return data
 
 
-# ==========================================
+# ==========================================================
 # EXECUTIONS
-# ==========================================
+# ==========================================================
 
 def create_execution(
     goal_id: str,
@@ -234,10 +343,14 @@ def update_execution(
         """,
         (
             status,
-            json.dumps(result) if result is not None else None,
+            json.dumps(result)
+            if result is not None
+            else None,
+
             json.dumps(verification)
             if verification is not None
             else None,
+
             now(),
             execution_id
         )
@@ -267,10 +380,14 @@ def get_execution(execution_id: str):
 
     data = dict(row)
 
-    data["arguments"] = json.loads(data["arguments"])
+    data["arguments"] = json.loads(
+        data["arguments"]
+    )
 
     if data["result"]:
-        data["result"] = json.loads(data["result"])
+        data["result"] = json.loads(
+            data["result"]
+        )
 
     if data["verification"]:
         data["verification"] = json.loads(
@@ -321,9 +438,9 @@ def get_goal_executions(goal_id: str):
     return executions
 
 
-# ==========================================
+# ==========================================================
 # APPROVALS
-# ==========================================
+# ==========================================================
 
 def create_approval(execution_id: str):
 
@@ -393,6 +510,47 @@ def get_approval(approval_id: str):
     return data
 
 
+def get_approval_for_execution(
+    execution_id: str
+):
+
+    connection = get_connection()
+
+    row = connection.execute(
+        """
+        SELECT
+            a.id AS approval_id,
+            a.execution_id,
+            a.status AS approval_status,
+            a.created_at AS approval_created_at,
+            a.resolved_at,
+            e.goal_id,
+            e.tool,
+            e.arguments,
+            e.status AS execution_status
+        FROM approvals a
+        JOIN executions e
+        ON a.execution_id = e.id
+        WHERE a.execution_id = ?
+        ORDER BY a.created_at DESC
+        LIMIT 1
+        """,
+        (execution_id,)
+    ).fetchone()
+
+    connection.close()
+
+    if not row:
+        return None
+
+    data = dict(row)
+
+    data["arguments"] = json.loads(
+        data["arguments"]
+    )
+
+    return data
+
 def resolve_approval(
     approval_id: str,
     status: str
@@ -419,9 +577,9 @@ def resolve_approval(
     connection.close()
 
 
-# ==========================================
+# ==========================================================
 # HISTORY
-# ==========================================
+# ==========================================================
 
 def get_history(limit=50):
 
@@ -477,15 +635,22 @@ def get_history(limit=50):
 
     return history
 
-# ---------------------------------------------------------
-# REMINDERS
-# ---------------------------------------------------------
 
-def create_reminder_record(title, remind_at):
+# ==========================================================
+# REMINDERS
+# ==========================================================
+
+def create_reminder_record(
+    title,
+    remind_at
+):
+
     conn = get_connection()
 
     reminder_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(
+        timezone.utc
+    ).isoformat()
 
     conn.execute(
         """
@@ -504,7 +669,7 @@ def create_reminder_record(title, remind_at):
             title,
             remind_at,
             "pending",
-            now,
+            timestamp,
             None
         )
     )
@@ -517,12 +682,13 @@ def create_reminder_record(title, remind_at):
         "title": title,
         "remind_at": remind_at,
         "status": "pending",
-        "created_at": now,
+        "created_at": timestamp,
         "triggered_at": None
     }
 
 
-def get_due_reminders(now):
+def get_due_reminders(current_time):
+
     conn = get_connection()
 
     rows = conn.execute(
@@ -539,7 +705,7 @@ def get_due_reminders(now):
         AND remind_at <= ?
         ORDER BY remind_at ASC
         """,
-        (now,)
+        (current_time,)
     ).fetchall()
 
     conn.close()
@@ -558,9 +724,12 @@ def get_due_reminders(now):
 
 
 def mark_reminder_triggered(reminder_id):
+
     conn = get_connection()
 
-    now = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(
+        timezone.utc
+    ).isoformat()
 
     conn.execute(
         """
@@ -570,7 +739,10 @@ def mark_reminder_triggered(reminder_id):
             triggered_at = ?
         WHERE id = ?
         """,
-        (now, reminder_id)
+        (
+            timestamp,
+            reminder_id
+        )
     )
 
     conn.commit()
@@ -578,6 +750,7 @@ def mark_reminder_triggered(reminder_id):
 
 
 def get_reminders(limit=50):
+
     conn = get_connection()
 
     rows = conn.execute(

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 
 from planner import plan_goal
 from executor import execute_tool, run_tool
@@ -28,12 +29,10 @@ from reminder_scheduler import (
     stop_reminder_scheduler,
 )
 
-from contextlib import asynccontextmanager
 
-
-# ==========================================
+# ==========================================================
 # APP LIFESPAN
-# ==========================================
+# ==========================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,21 +44,21 @@ async def lifespan(app: FastAPI):
     stop_reminder_scheduler()
 
 
-# ==========================================
+# ==========================================================
 # APP
-# ==========================================
+# ==========================================================
 
 app = FastAPI(
     title="Goal2Done",
     description="Autonomous personal operations agent",
-    version="0.2",
+    version="0.4",
     lifespan=lifespan,
 )
 
 
-# ==========================================
+# ==========================================================
 # CORS
-# ==========================================
+# ==========================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,16 +71,16 @@ app.add_middleware(
 )
 
 
-# ==========================================
+# ==========================================================
 # DATABASE
-# ==========================================
+# ==========================================================
 
 init_db()
 
 
-# ==========================================
+# ==========================================================
 # MODELS
-# ==========================================
+# ==========================================================
 
 class GoalRequest(BaseModel):
     goal: str
@@ -95,9 +94,9 @@ class RejectRequest(BaseModel):
     approval_id: str
 
 
-# ==========================================
+# ==========================================================
 # ROOT
-# ==========================================
+# ==========================================================
 
 @app.get("/")
 def root():
@@ -105,26 +104,26 @@ def root():
     return {
         "name": "Goal2Done",
         "status": "running",
-        "version": "0.2",
+        "version": "0.4",
     }
 
 
-# ==========================================
+# ==========================================================
 # CREATE GOAL
-# ==========================================
+# ==========================================================
 
 @app.post("/goal")
 def process_goal(request: GoalRequest):
 
-    # --------------------------------------
-    # Ask planner to create plan
-    # --------------------------------------
+    # ======================================================
+    # 1. ASK PLANNER TO CREATE PLAN
+    # ======================================================
 
     plan = plan_goal(request.goal)
 
-    # --------------------------------------
-    # Missing information
-    # --------------------------------------
+    # ======================================================
+    # 2. MISSING INFORMATION
+    # ======================================================
 
     if plan.get("needs_clarification"):
 
@@ -139,9 +138,9 @@ def process_goal(request: GoalRequest):
             "approvals_required": [],
         }
 
-    # --------------------------------------
-    # Create persistent goal
-    # --------------------------------------
+    # ======================================================
+    # 3. CREATE PERSISTENT GOAL
+    # ======================================================
 
     goal_id = create_goal(
         request.goal
@@ -150,36 +149,36 @@ def process_goal(request: GoalRequest):
     actions = []
     approvals = []
 
-    # ======================================
-    # RUNTIME EXECUTION CONTEXT
-    # ======================================
-    #
-    # This context allows later actions to
-    # access the results of earlier actions.
-    #
-    # Example:
-    #
-    # search_web
-    #      ↓
-    # search result
-    #      ↓
-    # generate_answer
-    #
-    # ======================================
+    # ======================================================
+    # 4. RUNTIME EXECUTION CONTEXT
+    # ======================================================
 
     execution_context = {
         "goal": request.goal,
+
+        "constraints": {},
+
         "results": [],
+
+        "completed_actions": [],
+
+        "failed_actions": [],
     }
 
-    # --------------------------------------
-    # Execute plan
-    # --------------------------------------
+    # ======================================================
+    # 5. GET PLANNED ACTIONS
+    # ======================================================
 
-    for planned_action in plan.get(
+    planned_actions = plan.get(
         "actions",
         []
-    ):
+    )
+
+    # ======================================================
+    # 6. EXECUTE PLAN
+    # ======================================================
+
+    for planned_action in planned_actions:
 
         tool_name = planned_action["tool"]
 
@@ -188,15 +187,18 @@ def process_goal(request: GoalRequest):
             {}
         )
 
-        # Make a copy so we never modify the
-        # original planner output.
+        # Never modify planner output directly.
         tool_arguments = arguments.copy()
 
-        # ==================================
-        # Risky action
-        # ==================================
+        # ==================================================
+        # RISK CHECK
+        # ==================================================
 
         if requires_approval(tool_name):
+
+            # ------------------------------------------------
+            # Create execution record
+            # ------------------------------------------------
 
             execution_id = create_execution(
                 goal_id=goal_id,
@@ -205,9 +207,25 @@ def process_goal(request: GoalRequest):
                 status="pending_approval",
             )
 
+            # ------------------------------------------------
+            # Create approval record
+            # ------------------------------------------------
+
             approval_id = create_approval(
                 execution_id
             )
+
+            # ------------------------------------------------
+            # IMPORTANT
+            #
+            # The tool has NOT executed yet.
+            #
+            # Therefore we must NOT call:
+            #
+            # verify_action(tool_name, result)
+            #
+            # because the reminder does not exist yet.
+            # ------------------------------------------------
 
             result = {
                 "status": "approval_required",
@@ -219,10 +237,24 @@ def process_goal(request: GoalRequest):
                 "approval_id": approval_id,
             }
 
-            verification = verify_action(
-                tool_name,
-                result,
-            )
+            # ------------------------------------------------
+            # Approval is a WAITING state.
+            #
+            # It is NOT a failure.
+            # ------------------------------------------------
+
+            verification = {
+                "verified": False,
+                "status": "awaiting_approval",
+                "category": "APPROVAL",
+                "message": (
+                    "Action is waiting for user approval."
+                ),
+            }
+
+            # ------------------------------------------------
+            # Save pending execution
+            # ------------------------------------------------
 
             update_execution(
                 execution_id,
@@ -231,30 +263,67 @@ def process_goal(request: GoalRequest):
                 verification,
             )
 
+            # ------------------------------------------------
+            # Build frontend action
+            # ------------------------------------------------
+
             action = {
+                "action_id": planned_action.get(
+                    "id"
+                ),
+
                 "execution_id": execution_id,
+
                 "approval_id": approval_id,
+
                 "tool": tool_name,
+
                 "arguments": arguments,
+
+                "depends_on": planned_action.get(
+                    "depends_on",
+                    []
+                ),
+
+                "expected_outcome":
+                    planned_action.get(
+                        "expected_outcome"
+                    ),
+
                 "result": result,
+
                 "verification": verification,
+
+                "status": "waiting_for_approval",
             }
 
             actions.append(action)
+
             approvals.append(action)
 
-            # Store approval state in context too.
-            execution_context["results"].append({
-                "tool": tool_name,
-                "status": "approval_required",
-                "result": result,
-            })
+            # ------------------------------------------------
+            # Store approval state in context
+            # ------------------------------------------------
+
+            execution_context[
+                "results"
+            ].append(action)
+
+            # ------------------------------------------------
+            # IMPORTANT:
+            #
+            # Do NOT add this to completed_actions.
+            #
+            # Do NOT add this to failed_actions.
+            #
+            # It is simply waiting for the user.
+            # ------------------------------------------------
 
             continue
 
-        # ==================================
-        # Safe action
-        # ==================================
+        # ==================================================
+        # NORMAL / SAFE ACTION
+        # ==================================================
 
         execution_id = create_execution(
             goal_id=goal_id,
@@ -263,55 +332,58 @@ def process_goal(request: GoalRequest):
             status="executing",
         )
 
-        # ==================================
+        # ==================================================
         # PASS CONTEXT TO generate_answer
-        # ==================================
+        # ==================================================
 
         if tool_name == "generate_answer":
 
-            tool_arguments["context"] = execution_context
+            tool_arguments[
+                "context"
+            ] = execution_context
 
-        # ==================================
-        # Execute tool
-        # ==================================
+        # ==================================================
+        # EXECUTE TOOL
+        # ==================================================
 
-        result = execute_tool(
-            tool_name,
-            tool_arguments,
-        )
+        try:
 
-        # ==================================
-        # STORE RESULT IN CONTEXT
-        # ==================================
-        #
-        # This is what allows the next action
-        # to use the output of this action.
-        #
-        # ==================================
+            result = execute_tool(
+                tool_name,
+                tool_arguments,
+            )
 
-        execution_context["results"].append({
-            "tool": tool_name,
-            "result": result,
-        })
+        except Exception as e:
 
-        # ==================================
-        # Verify result
-        # ==================================
+            result = {
+                "status": "error",
+                "message": str(e),
+            }
+
+        # ==================================================
+        # VERIFY RESULT
+        # ==================================================
 
         verification = verify_action(
             tool_name,
             result,
         )
 
-        execution_status = (
-            "completed"
-            if verification["verified"]
-            else "failed"
-        )
+        # ==================================================
+        # DETERMINE EXECUTION STATUS
+        # ==================================================
 
-        # ==================================
-        # Update execution
-        # ==================================
+        if verification.get("verified"):
+
+            execution_status = "completed"
+
+        else:
+
+            execution_status = "failed"
+
+        # ==================================================
+        # UPDATE EXECUTION
+        # ==================================================
 
         update_execution(
             execution_id,
@@ -320,71 +392,200 @@ def process_goal(request: GoalRequest):
             verification,
         )
 
-        # ==================================
-        # Build action response
-        # ==================================
+        # ==================================================
+        # STORE RESULT IN CONTEXT
+        # ==================================================
+
+        context_result = {
+            "tool": tool_name,
+
+            "arguments": arguments,
+
+            "result": result,
+
+            "verification": verification,
+        }
+
+        execution_context[
+            "results"
+        ].append(
+            context_result
+        )
+
+        # ==================================================
+        # TRACK SUCCESS / FAILURE
+        # ==================================================
+
+        if verification.get("verified"):
+
+            execution_context[
+                "completed_actions"
+            ].append(
+                context_result
+            )
+
+        else:
+
+            execution_context[
+                "failed_actions"
+            ].append(
+                context_result
+            )
+
+        # ==================================================
+        # BUILD ACTION RESPONSE
+        # ==================================================
 
         action = {
+            "action_id": planned_action.get(
+                "id"
+            ),
+
             "execution_id": execution_id,
+
             "tool": tool_name,
+
             "arguments": arguments,
+
+            "depends_on": planned_action.get(
+                "depends_on",
+                []
+            ),
+
+            "expected_outcome":
+                planned_action.get(
+                    "expected_outcome"
+                ),
+
             "result": result,
+
             "verification": verification,
+
+            "status": execution_status,
         }
 
         actions.append(action)
 
-    # ======================================
-    # DETERMINE GOAL STATUS
-    # ======================================
+    # ======================================================
+    # 7. DETERMINE GOAL STATUS
+    # ======================================================
+
+    completed_count = 0
+    failed_count = 0
+
+    for action in actions:
+
+        status = action.get(
+            "status"
+        )
+
+        if status == "completed":
+
+            completed_count += 1
+
+        elif status in [
+            "failed",
+            "error",
+            "verification_failed",
+        ]:
+
+            failed_count += 1
+
+    # ------------------------------------------------------
+    # Approval takes priority over completed state.
+    # ------------------------------------------------------
 
     if approvals:
 
-        goal_status = "waiting_for_approval"
+        goal_status = (
+            "waiting_for_approval"
+        )
+
+    elif failed_count > 0:
+
+        goal_status = (
+            "verification_failed"
+        )
+
+    elif completed_count == len(actions) and actions:
+
+        goal_status = "completed"
 
     else:
 
-        all_verified = all(
-            action["verification"]["verified"]
-            for action in actions
-        )
-
         goal_status = (
-            "completed"
-            if all_verified
-            else "verification_failed"
+            "verification_failed"
         )
 
-    # ======================================
-    # UPDATE GOAL
-    # ======================================
+    # ======================================================
+    # 8. UPDATE GOAL
+    # ======================================================
 
     update_goal_status(
         goal_id,
         goal_status,
     )
 
-    # ======================================
-    # RETURN RESULT
-    # ======================================
+    # ======================================================
+    # 9. EXECUTION SUMMARY
+    # ======================================================
+
+    execution_summary = {
+
+        "total_actions":
+            len(actions),
+
+        "completed_actions":
+            completed_count,
+
+        "failed_actions":
+            failed_count,
+
+        "blocked_actions":
+            0,
+
+        "waiting_for_approval":
+            len(approvals),
+    }
+
+    # ======================================================
+    # 10. RETURN RESULT
+    # ======================================================
 
     return {
-        "goal_id": goal_id,
-        "goal": request.goal,
-        "status": goal_status,
-        "actions": actions,
-        "approvals_required": approvals,
+
+        "goal_id":
+            goal_id,
+
+        "goal":
+            request.goal,
+
+        "status":
+            goal_status,
+
+        "actions":
+            actions,
+
+        "approvals_required":
+            approvals,
+
+        "execution_summary":
+            execution_summary,
     }
 
 
-# ==========================================
+# ==========================================================
 # APPROVE
-# ==========================================
+# ==========================================================
 
 @app.post("/approve")
 def approve_action(
     request: ApprovalRequest,
 ):
+
+    # ======================================================
+    # 1. GET APPROVAL
+    # ======================================================
 
     approval = get_approval(
         request.approval_id
@@ -397,7 +598,13 @@ def approve_action(
             detail="Approval not found",
         )
 
-    if approval["approval_status"] != "pending":
+    # ======================================================
+    # 2. CHECK APPROVAL STATUS
+    # ======================================================
+
+    if approval[
+        "approval_status"
+    ] != "pending":
 
         raise HTTPException(
             status_code=400,
@@ -411,46 +618,65 @@ def approve_action(
         "execution_id"
     ]
 
-    tool_name = approval["tool"]
+    tool_name = approval[
+        "tool"
+    ]
 
-    arguments = approval["arguments"]
+    arguments = approval[
+        "arguments"
+    ]
 
-    # ======================================
-    # Mark approval approved
-    # ======================================
+    # ======================================================
+    # 3. MARK APPROVAL AS APPROVED
+    # ======================================================
 
     resolve_approval(
         request.approval_id,
         "approved",
     )
 
-    # ======================================
-    # Execute approved action
-    # ======================================
+    # ======================================================
+    # 4. EXECUTE APPROVED ACTION
+    # ======================================================
 
-    result = run_tool(
-        tool_name,
-        arguments,
-    )
+    try:
 
-    # ======================================
-    # Verify
-    # ======================================
+        result = run_tool(
+            tool_name,
+            arguments,
+        )
+
+    except Exception as e:
+
+        result = {
+            "status": "error",
+            "message": str(e),
+        }
+
+    # ======================================================
+    # 5. NOW VERIFY THE ACTION
+    #
+    # IMPORTANT:
+    #
+    # Verification happens AFTER approval and execution.
+    # ======================================================
 
     verification = verify_action(
         tool_name,
         result,
     )
 
-    execution_status = (
-        "completed"
-        if verification["verified"]
-        else "failed"
-    )
+    if verification.get("verified"):
 
-    # ======================================
-    # Update execution
-    # ======================================
+        execution_status = "completed"
+
+    else:
+
+        execution_status = "failed"
+
+    # ======================================================
+    # 6. UPDATE EXECUTION
+    # ======================================================
 
     update_execution(
         execution_id,
@@ -459,28 +685,60 @@ def approve_action(
         verification,
     )
 
-    # ======================================
-    # Update goal status
-    # ======================================
+    # ======================================================
+    # 7. UPDATE GOAL STATUS
+    # ======================================================
 
-    goal_id = approval["goal_id"]
+    goal_id = approval[
+        "goal_id"
+    ]
 
     executions = get_goal_executions(
         goal_id
     )
 
-    if any(
-        execution["status"]
+    # ------------------------------------------------------
+    # Check pending approvals
+    # ------------------------------------------------------
+
+    pending_approvals = any(
+        execution.get("status")
         == "pending_approval"
         for execution in executions
-    ):
+    )
+
+    # ------------------------------------------------------
+    # Check failures
+    # ------------------------------------------------------
+
+    failed_executions = any(
+        execution.get("status")
+        in [
+            "failed",
+            "error",
+            "verification_failed",
+        ]
+        for execution in executions
+    )
+
+    # ------------------------------------------------------
+    # Determine final goal state
+    # ------------------------------------------------------
+
+    if pending_approvals:
 
         goal_status = (
             "waiting_for_approval"
         )
 
-    elif all(
-        execution["status"]
+    elif failed_executions:
+
+        goal_status = (
+            "verification_failed"
+        )
+
+    elif executions and all(
+        execution.get("status")
         == "completed"
         for execution in executions
     ):
@@ -489,42 +747,65 @@ def approve_action(
 
     else:
 
-        goal_status = "verification_failed"
+        goal_status = (
+            "verification_failed"
+        )
 
     update_goal_status(
         goal_id,
         goal_status,
     )
 
-    # ======================================
-    # Return
-    # ======================================
+    # ======================================================
+    # 8. RETURN
+    # ======================================================
 
     return {
-        "status": goal_status,
-        "message": (
-            "Action approved and executed."
-        ),
-        "goal_id": goal_id,
+
+        "status":
+            goal_status,
+
+        "message":
+            "Action approved and executed.",
+
+        "goal_id":
+            goal_id,
+
         "action": {
-            "execution_id": execution_id,
-            "approval_id": request.approval_id,
-            "tool": tool_name,
-            "arguments": arguments,
-            "result": result,
-            "verification": verification,
+
+            "execution_id":
+                execution_id,
+
+            "approval_id":
+                request.approval_id,
+
+            "tool":
+                tool_name,
+
+            "arguments":
+                arguments,
+
+            "result":
+                result,
+
+            "verification":
+                verification,
         },
     }
 
 
-# ==========================================
+# ==========================================================
 # REJECT
-# ==========================================
+# ==========================================================
 
 @app.post("/reject")
 def reject_action(
     request: RejectRequest,
 ):
+
+    # ======================================================
+    # 1. GET APPROVAL
+    # ======================================================
 
     approval = get_approval(
         request.approval_id
@@ -537,7 +818,13 @@ def reject_action(
             detail="Approval not found",
         )
 
-    if approval["approval_status"] != "pending":
+    # ======================================================
+    # 2. CHECK APPROVAL STATUS
+    # ======================================================
+
+    if approval[
+        "approval_status"
+    ] != "pending":
 
         raise HTTPException(
             status_code=400,
@@ -547,14 +834,18 @@ def reject_action(
             ),
         )
 
-    # ======================================
-    # Reject
-    # ======================================
+    # ======================================================
+    # 3. REJECT APPROVAL
+    # ======================================================
 
     resolve_approval(
         request.approval_id,
         "rejected",
     )
+
+    # ======================================================
+    # 4. UPDATE EXECUTION
+    # ======================================================
 
     update_execution(
         approval["execution_id"],
@@ -568,66 +859,79 @@ def reject_action(
         {
             "verified": False,
             "status": "rejected",
+            "category": "APPROVAL",
             "message": (
                 "Action was rejected by the user."
             ),
         },
     )
 
-    # ======================================
-    # Update goal
-    # ======================================
+    # ======================================================
+    # 5. UPDATE GOAL
+    # ======================================================
 
     update_goal_status(
         approval["goal_id"],
         "rejected",
     )
 
-    # ======================================
-    # Return
-    # ======================================
+    # ======================================================
+    # 6. RETURN
+    # ======================================================
 
     return {
-        "status": "rejected",
-        "goal_id": approval["goal_id"],
-        "message": (
-            "Action was rejected by the user."
-        ),
+
+        "status":
+            "rejected",
+
+        "goal_id":
+            approval["goal_id"],
+
+        "message":
+            "Action was rejected by the user.",
+
         "action": {
+
             "execution_id":
                 approval["execution_id"],
+
             "approval_id":
                 request.approval_id,
+
             "tool":
                 approval["tool"],
+
             "arguments":
                 approval["arguments"],
         },
     }
 
 
-# ==========================================
+# ==========================================================
 # GOAL HISTORY
-# ==========================================
+# ==========================================================
 
 @app.get("/history")
 def history():
 
     return {
-        "history": get_history()
+        "history":
+            get_history()
     }
 
 
-# ==========================================
+# ==========================================================
 # SINGLE GOAL HISTORY
-# ==========================================
+# ==========================================================
 
 @app.get("/history/{goal_id}")
 def goal_history(
     goal_id: str,
 ):
 
-    goal = get_goal(goal_id)
+    goal = get_goal(
+        goal_id
+    )
 
     if not goal:
 
@@ -637,19 +941,26 @@ def goal_history(
         )
 
     return {
-        "goal": goal,
+
+        "goal":
+            goal,
+
         "executions":
-            get_goal_executions(goal_id),
+            get_goal_executions(
+                goal_id
+            ),
     }
 
 
-# ==========================================
+# ==========================================================
 # REMINDERS
-# ==========================================
+# ==========================================================
 
 @app.get("/reminders")
 def reminders():
 
     return {
-        "reminders": get_reminders()
+
+        "reminders":
+            get_reminders()
     }

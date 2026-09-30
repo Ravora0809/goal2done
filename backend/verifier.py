@@ -1,272 +1,273 @@
-# ==========================================
-# GOAL2DONE ACTION VERIFIER
-# ==========================================
+# ==========================================================
+# GOAL2DONE - VERIFIER
+# ==========================================================
 
+def verify_action(tool_name, result):
 
-def verify_action(tool_name: str, result: dict):
-
-    # ==========================================
-    # 1. APPROVAL
-    # ==========================================
-
-    if result.get("status") == "approval_required":
-
+    if not result:
         return {
             "verified": False,
-            "status": "awaiting_approval",
-            "category": "APPROVAL",
-            "message": "Action is waiting for user approval.",
+            "status": "failed",
+            "category": "UNKNOWN",
+            "message": "Tool returned no result."
         }
 
-    # ==========================================
-    # 2. GENERAL EXECUTION FAILURE
-    # ==========================================
+    status = result.get("status")
 
-    if result.get("status") != "success":
+    # ------------------------------------------------------
+    # SEARCH
+    # ------------------------------------------------------
+
+    if tool_name == "search_web":
+
+        if status == "success":
+
+            results = result.get("results", [])
+
+            if len(results) > 0:
+
+                return {
+                    "verified": True,
+                    "status": "verified",
+                    "category": "RESEARCH",
+                    "message": (
+                        f"Research completed with "
+                        f"{len(results)} results."
+                    )
+                }
 
         return {
             "verified": False,
             "status": "failed",
-            "category": "EXECUTION",
-            "message": result.get(
-                "message",
-                "Action failed during execution.",
-            ),
-        }
-
-    # ==========================================
-    # 3. RESEARCH
-    # ==========================================
-
-    if tool_name == "search_web":
-
-        results = result.get(
-            "results",
-            [],
-        )
-
-        if not isinstance(results, list):
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "RESEARCH",
-                "message": "Search returned invalid results.",
-            }
-
-        if len(results) == 0:
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "RESEARCH",
-                "message": "Search returned no results.",
-            }
-
-        return {
-            "verified": True,
-            "status": "verified",
             "category": "RESEARCH",
-            "message": (
-                f"Search returned {len(results)} results."
-            ),
+            "message": "Web research returned no usable results."
         }
 
-    # ==========================================
-    # 4. ANSWER GENERATION
-    # ==========================================
-
-    if tool_name == "generate_answer":
-
-        answer = result.get("answer")
-
-        # Answer must actually exist
-        if not answer:
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "ANSWER",
-                "message": "No answer was generated.",
-            }
-
-        # Make sure it is text
-        if not isinstance(answer, str):
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "ANSWER",
-                "message": "Generated answer has an invalid format.",
-            }
-
-        # Remove whitespace
-        answer = answer.strip()
-
-        # Empty answer
-        if len(answer) == 0:
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "ANSWER",
-                "message": "Generated answer is empty.",
-            }
-
-        # Very tiny output is usually not a useful answer
-        if len(answer) < 10:
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "ANSWER",
-                "message": "Generated answer is too short.",
-            }
-
-        return {
-            "verified": True,
-            "status": "verified",
-            "category": "ANSWER",
-            "message": "Answer was generated successfully.",
-        }
-
-    # ==========================================
-    # 5. TASK CREATION
-    # ==========================================
-
-    if tool_name == "create_task":
-
-        task = result.get("task")
-
-        if not task:
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "TASK",
-                "message": "Task creation could not be verified.",
-            }
-
-        if not task.get("id"):
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "TASK",
-                "message": "Created task has no ID.",
-            }
-
-        if not task.get("title"):
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "TASK",
-                "message": "Created task has no title.",
-            }
-
-        return {
-            "verified": True,
-            "status": "verified",
-            "category": "TASK",
-            "message": (
-                f"Task '{task['title']}' was created."
-            ),
-        }
-
-    # ==========================================
-    # 6. REMINDER CREATION
-    # ==========================================
-
-    if tool_name == "create_reminder":
-
-        reminder = result.get("reminder")
-
-        if not reminder:
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "REMINDER",
-                "message": (
-                    "Reminder creation could not be verified."
-                ),
-            }
-
-        if not reminder.get("id"):
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "REMINDER",
-                "message": "Created reminder has no ID.",
-            }
-
-        if not reminder.get("title"):
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "REMINDER",
-                "message": "Created reminder has no title.",
-            }
-
-        if not reminder.get("remind_at"):
-
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "REMINDER",
-                "message": "Reminder has no scheduled time.",
-            }
-
-        return {
-            "verified": True,
-            "status": "verified",
-            "category": "REMINDER",
-            "message": (
-                f"Reminder '{reminder['title']}' "
-                f"was created for {reminder.get('time', reminder['remind_at'])}."
-            ),
-        }
-
-    # ==========================================
-    # 7. BROWSER
-    # ==========================================
+    # ------------------------------------------------------
+    # BROWSER
+    # ------------------------------------------------------
 
     if tool_name == "browser_open":
 
-        url = result.get("url")
-
-        if not url:
+        if status == "success":
 
             return {
-                "verified": False,
-                "status": "failed",
+                "verified": True,
+                "status": "verified",
                 "category": "BROWSER",
-                "message": (
-                    "Browser navigation could not be verified."
-                ),
+                "message": "Web page opened successfully."
             }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "BROWSER",
+            "message": "Browser action failed."
+        }
+
+    # ------------------------------------------------------
+    # TASK
+    # ------------------------------------------------------
+
+    if tool_name == "create_task":
+
+        if status == "success":
+
+            task = result.get("task")
+
+            if task:
+
+                return {
+                    "verified": True,
+                    "status": "verified",
+                    "category": "TASK",
+                    "message": (
+                        f"Task '{task.get('title')}' "
+                        "was created."
+                    )
+                }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "TASK",
+            "message": "Task creation failed."
+        }
+
+    # ------------------------------------------------------
+    # REMINDER
+    # ------------------------------------------------------
+
+    if tool_name == "create_reminder":
+
+        if status == "success":
+
+            reminder = result.get("reminder")
+
+            if reminder:
+
+                return {
+                    "verified": True,
+                    "status": "verified",
+                    "category": "REMINDER",
+                    "message": (
+                        f"Reminder "
+                        f"'{reminder.get('title')}' "
+                        f"was created for "
+                        f"{reminder.get('time')}."
+                    )
+                }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "REMINDER",
+            "message": "Reminder creation failed."
+        }
+
+    # ------------------------------------------------------
+    # ANSWER GENERATION
+    # ------------------------------------------------------
+
+    if tool_name == "generate_answer":
+
+        if status == "success":
+
+            answer = result.get("answer")
+
+            if answer and str(answer).strip():
+
+                return {
+                    "verified": True,
+                    "status": "verified",
+                    "category": "ANSWER",
+                    "message": "Final answer was generated."
+                }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "ANSWER",
+            "message": "No usable final answer was generated."
+        }
+
+    # ------------------------------------------------------
+    # UNKNOWN TOOL
+    # ------------------------------------------------------
+
+    return {
+        "verified": False,
+        "status": "failed",
+        "category": "UNKNOWN",
+        "message": (
+            f"No verifier exists for tool '{tool_name}'."
+        )
+    }
+
+
+# ==========================================================
+# GOAL-LEVEL VERIFICATION
+# ==========================================================
+
+def verify_goal(
+    goal: str,
+    executions: list,
+):
+
+    if not executions:
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "message": "No actions were executed.",
+            "completed_actions": 0,
+            "failed_actions": 0,
+            "pending_actions": 0,
+        }
+
+    completed = [
+        execution
+        for execution in executions
+        if execution.get("status") == "completed"
+    ]
+
+    failed = [
+        execution
+        for execution in executions
+        if execution.get("status")
+        in ("failed", "rejected")
+    ]
+
+    pending = [
+        execution
+        for execution in executions
+        if execution.get("status")
+        in (
+            "pending",
+            "pending_approval",
+            "in_progress",
+        )
+    ]
+
+    # ------------------------------------------------------
+    # FAILED ACTIONS
+    # ------------------------------------------------------
+
+    if failed:
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "message": (
+                "The goal cannot be verified because "
+                "one or more actions failed."
+            ),
+            "completed_actions": len(completed),
+            "failed_actions": len(failed),
+            "pending_actions": len(pending),
+        }
+
+    # ------------------------------------------------------
+    # PENDING ACTIONS
+    # ------------------------------------------------------
+
+    if pending:
+
+        return {
+            "verified": False,
+            "status": "pending",
+            "message": (
+                "The goal cannot be verified yet because "
+                "some actions are still pending."
+            ),
+            "completed_actions": len(completed),
+            "failed_actions": 0,
+            "pending_actions": len(pending),
+        }
+
+    # ------------------------------------------------------
+    # ALL ACTIONS COMPLETED
+    # ------------------------------------------------------
+
+    if len(completed) == len(executions):
 
         return {
             "verified": True,
             "status": "verified",
-            "category": "BROWSER",
             "message": (
-                f"Successfully opened {url}."
+                "All planned actions completed "
+                "successfully."
             ),
+            "completed_actions": len(completed),
+            "failed_actions": 0,
+            "pending_actions": 0,
         }
-
-    # ==========================================
-    # 8. UNKNOWN TOOL
-    # ==========================================
 
     return {
         "verified": False,
         "status": "unknown",
-        "category": "UNKNOWN",
-        "message": (
-            f"No verification method exists for tool '{tool_name}'."
-        ),
+        "message": "Goal verification could not be determined.",
+        "completed_actions": len(completed),
+        "failed_actions": len(failed),
+        "pending_actions": len(pending),
     }
