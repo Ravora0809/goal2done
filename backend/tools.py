@@ -1,16 +1,17 @@
-tasks = []
-reminders = []
-
-
 # ============================================================
 # WEB SEARCH
 # ============================================================
-
+import os
+import json
+from groq import Groq
 from ddgs import DDGS
 from datetime import datetime, timezone
 import dateparser
 
 from database import create_reminder_record
+
+tasks = []
+reminders = []
 
 
 def search_web(query: str):
@@ -135,3 +136,156 @@ from browser import open_browser
 def browser_open(url: str):
 
     return open_browser(url)
+# ============================================================
+# GENERATE ANSWER
+# ============================================================
+def generate_answer(instruction: str, context: dict):
+
+    try:
+        api_key = os.getenv("GROQ_API_KEY")
+
+        if not api_key:
+            return {
+                "status": "error",
+                "type": "answer",
+                "message": "GROQ_API_KEY is not configured"
+            }
+
+        client = Groq(api_key=api_key)
+
+        goal = context.get("goal", "")
+
+        previous_results = context.get("results", [])
+
+        # Only pass useful tool output to the LLM
+        research_data = json.dumps(
+            previous_results,
+            indent=2,
+            ensure_ascii=False
+        )
+
+        prompt = f"""
+You are the final answer generator for Goal2Done.
+
+USER GOAL:
+{goal}
+
+USER REQUEST:
+{instruction}
+
+RESEARCH / INFORMATION FROM PREVIOUS ACTIONS:
+{research_data}
+
+Create the final response that should be shown directly to the user.
+
+IMPORTANT:
+
+The user wants a CLEAN, SHORT, READABLE answer.
+
+Follow these rules:
+
+1. Answer the user's actual question directly.
+2. Do not dump research results.
+3. Do not repeat information.
+4. Do not mention Goal2Done, tools, planner, executor,
+   verification, execution, context, APIs, or internal processing.
+5. Do not use HTML.
+6. Do not use <br>, <div>, or other HTML tags.
+7. Use simple Markdown.
+8. Prefer short paragraphs and bullet points.
+9. Avoid huge tables unless the user explicitly asks for a table.
+10. Keep normal answers between approximately 100-300 words.
+11. If the question is simple, keep the answer around 50-150 words.
+12. Use headings only when they improve readability.
+13. Highlight important terms with **bold**.
+14. Do not provide unnecessary background information.
+15. Do not repeat the question.
+16. Do not add a long conclusion.
+
+For a simple technical question, use this structure when appropriate:
+
+### Topic — Quick Overview
+
+One or two sentence introduction.
+
+**Key points**
+- Point 1
+- Point 2
+- Point 3
+- Point 4
+- Point 5
+
+**Common uses**
+- Use 1
+- Use 2
+- Use 3
+
+**In short:** One concise summary.
+
+For research questions:
+
+### Short Answer
+
+One concise summary.
+
+### Key Findings
+
+1. **Finding 1** — short explanation
+2. **Finding 2** — short explanation
+3. **Finding 3** — short explanation
+4. **Finding 4** — short explanation
+5. **Finding 5** — short explanation
+
+### Recommendation / Next Step
+
+Only include this section if it is useful for the user's request.
+
+For study plans:
+
+### 7-Day Study Plan
+
+#### Day 1 — Topic
+- Task
+- Task
+- Task
+
+**Time:** ~3 hours
+
+Keep each day concise.
+
+Return ONLY the final user-facing answer.
+"""
+
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful final-answer generator. "
+                        "Give the user the actual result they requested."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2
+        )
+
+        answer = response.choices[0].message.content
+
+        return {
+            "status": "success",
+            "type": "answer",
+            "answer": answer
+        }
+
+    except Exception as e:
+
+        return {
+            "status": "error",
+            "type": "answer",
+            "message": str(e)
+        }
