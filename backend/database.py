@@ -2,7 +2,7 @@ import sqlite3
 import json
 import uuid
 from datetime import datetime, timezone
-
+import os
 
 if os.getenv("VERCEL") == "1":
     DB_PATH = "/tmp/goal2done.db"
