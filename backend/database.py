@@ -5,12 +5,11 @@ import os
 from datetime import datetime, timezone
 import os
 
-<<<<<<< HEAD
-=======
+ 
 
 # Vercel deployment filesystems are read-only.
 # Keep local development persistent, but use /tmp on Vercel.
->>>>>>> 83c15fc (added few files)
+ 
 if os.getenv("VERCEL") == "1":
     DB_PATH = "/tmp/goal2done.db"
 else:
