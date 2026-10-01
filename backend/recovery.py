@@ -3,10 +3,8 @@
 # ==========================================================
 
 import json
-from llm_client import (
-    chat_completion,
-    RECOVERY_MODEL,
-)
+
+from groq_client import client
 
 
 RECOVERY_SYSTEM_PROMPT = """
@@ -118,24 +116,20 @@ COMPLETED ACTIONS:
 Create a recovery plan.
 """
 
-    response = chat_completion(
-    model=RECOVERY_MODEL,
-    messages=[
-        {
-            "role": "system",
-            "content": RECOVERY_SYSTEM_PROMPT,
-        },
-        {
-            "role": "user",
-            "content": prompt,
-        },
-    ],
-    max_tokens=4000,
-    fallback_models=[
-        "openai/gpt-6-luna",
-        "anthropic/claude-sonnet-4.5",
-    ],
-)
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[
+            {
+                "role": "system",
+                "content": RECOVERY_SYSTEM_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+        temperature=0,
+    )
 
     content = response.choices[0].message.content.strip()
 

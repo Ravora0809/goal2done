@@ -22,6 +22,12 @@ goal2done.db
 dist/
 build/
 .vite/
+.env
+credentials.json
+token_calendar.json
+.env
+*db
+__pycache__/
 
 # IDE
 .vscode/

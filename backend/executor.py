@@ -8,6 +8,10 @@ from tools import (
     delete_reminder,
     browser_open,
     generate_answer,
+    calendar_list_events,
+    calendar_create_event,
+    calendar_update_event,
+    calendar_delete_event,
 )
 
 
@@ -27,6 +31,18 @@ def run_tool(tool_name, arguments):
 
     if tool_name == "generate_answer":
         return generate_answer(**arguments)
+
+    if tool_name == "calendar_list_events":
+        return calendar_list_events(**arguments)
+
+    if tool_name == "calendar_create_event":
+        return calendar_create_event(**arguments)
+
+    if tool_name == "calendar_update_event":
+        return calendar_update_event(**arguments)
+
+    if tool_name == "calendar_delete_event":
+        return calendar_delete_event(**arguments)
     if tool_name == "update_reminder":
         return update_reminder(
         **arguments

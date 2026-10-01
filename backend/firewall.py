@@ -1,7 +1,8 @@
 SAFE_TOOLS = {
     "search_web",
     "create_task",
-    "browser_open"
+    "browser_open",
+    "calendar_list_events",
 }
 
 
@@ -15,6 +16,9 @@ APPROVAL_REQUIRED = {
     "delete_file",
     "update_reminder",
     "delete_reminder",
+    "calendar_create_event",
+    "calendar_update_event",
+    "calendar_delete_event",
 }
 
 

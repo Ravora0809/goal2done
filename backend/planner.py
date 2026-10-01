@@ -1,10 +1,6 @@
 import json
 from groq_client import client
 from datetime import datetime
-from llm_client import (
-    chat_completion,
-    PLANNER_MODEL,
-)
 
 SYSTEM_PROMPT = """
 You are the planning engine for Goal2Done.
@@ -210,6 +206,74 @@ Never silently modify or delete a reminder.
 
 update_reminder and delete_reminder
 must go through the approval firewall.
+
+calendar_list_events
+------------------------------------------------------------
+Read upcoming events from the user's primary Google Calendar.
+Use when the user asks to:
+- check availability
+- see upcoming meetings
+- find calendar events
+- check whether a time is free
+
+Arguments:
+
+{
+  "start_time": "optional ISO-8601 datetime",
+  "end_time": "optional ISO-8601 datetime",
+  "max_results": 20
+}
+
+calendar_create_event
+------------------------------------------------------------
+Create an event in the user's primary Google Calendar.
+This action requires user approval.
+
+Arguments:
+
+{
+  "title": "...",
+  "start_time": "ISO-8601 datetime with timezone",
+  "end_time": "optional ISO-8601 datetime with timezone",
+  "description": "optional",
+  "location": "optional",
+  "attendees": ["email@example.com"]
+}
+
+calendar_update_event
+------------------------------------------------------------
+Modify an existing Google Calendar event.
+This action requires user approval.
+
+Arguments:
+
+{
+  "event_id": "...",
+  "title": "optional",
+  "start_time": "optional ISO-8601 datetime",
+  "end_time": "optional ISO-8601 datetime",
+  "description": "optional",
+  "location": "optional"
+}
+
+calendar_delete_event
+------------------------------------------------------------
+Delete an existing Google Calendar event.
+This action requires user approval.
+
+Arguments:
+
+{
+  "event_id": "..."
+}
+
+Calendar safety rules:
+- Reading calendar events is safe.
+- Creating, updating, or deleting calendar events requires approval.
+- Never invent an event ID.
+- If required event details are missing, ask for clarification.
+- When creating events, preserve the user's timezone/date/time.
+
 
 ============================================================
 CORE PLANNING RULE
@@ -599,8 +663,8 @@ Return ONLY valid JSON.
 def plan_goal(goal: str):
     current_datetime = datetime.now().astimezone().isoformat()
 
-    response = chat_completion(
-    model=PLANNER_MODEL,
+    response = client.chat.completions.create(
+    model="openai/gpt-oss-120b",
     messages=[
         {
             "role": "system",
@@ -608,13 +672,8 @@ def plan_goal(goal: str):
         },
         {
             "role": "user",
-            "content": f"""
-Current date and time:
-{current_datetime}
-
-Important date/time rules:
-
-1. Resolve relative expressions such as:
+            "content": f"""Current date and time:{current_datetime} Important date/time rules:
+            1. Resolve relative expressions such as:
    - today
    - tomorrow
    - tonight
@@ -625,30 +684,22 @@ Important date/time rules:
 
 2. Never treat "tomorrow" as today.
 
-3. When creating reminders, output an explicit
-   ISO-8601 datetime whenever the user gave
-   a relative date/time.
+3. When creating reminders, output an explicit ISO-8601
+   datetime whenever the user gave a relative date/time.
 
 4. Preserve the user's intended date exactly.
 
-5. If the user says "tomorrow at 10 AM" and the
-   current date is September 30, 2026, the reminder
-   MUST be October 1, 2026 at 10:00 AM.
+5. If the user says "tomorrow at 10 AM" and the current
+   date is September 30, 2026, the reminder MUST be
+   October 1, 2026 at 10:00 AM.
 
 User goal:
 {goal}
 """
         }
     ],
-    max_tokens=6000,
-    # FALLBACK MODELS
-    fallback_models=[
-        "openai/gpt-6-luna",
-        "anthropic/claude-sonnet-4.5",
-    ],
+    temperature=0
 )
-   
-
 
     content = response.choices[0].message.content
 

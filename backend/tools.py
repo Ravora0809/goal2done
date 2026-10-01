@@ -3,10 +3,7 @@
 # ============================================================
 import os
 import json
-from llm_client import (
-    chat_completion,
-    ANSWER_MODEL,
-)
+from groq import Groq
 from ddgs import DDGS
 from datetime import datetime, timezone
 import dateparser
@@ -139,6 +136,12 @@ def create_reminder(title: str, time: str):
 # ============================================================
 
 from browser import open_browser
+from google_calendar import (
+    calendar_list_events,
+    calendar_create_event,
+    calendar_update_event,
+    calendar_delete_event,
+)
 
 
 def browser_open(url: str):
@@ -147,37 +150,30 @@ def browser_open(url: str):
 # ============================================================
 # GENERATE ANSWER
 # ============================================================
-# ============================================================
-# GENERATE ANSWER
-# ============================================================
-
 def generate_answer(instruction: str, context: dict):
 
     try:
+        api_key = os.getenv("GROQ_API_KEY")
 
-        goal = context.get(
-            "goal",
-            ""
-        )
+        if not api_key:
+            return {
+                "status": "error",
+                "type": "answer",
+                "message": "GROQ_API_KEY is not configured"
+            }
 
-        previous_results = context.get(
-            "results",
-            []
-        )
+        client = Groq(api_key=api_key)
 
-        # ----------------------------------------------------
-        # Prepare research information
-        # ----------------------------------------------------
+        goal = context.get("goal", "")
 
+        previous_results = context.get("results", [])
+
+        # Only pass useful tool output to the LLM
         research_data = json.dumps(
             previous_results,
             indent=2,
             ensure_ascii=False
         )
-
-        # ----------------------------------------------------
-        # Final answer prompt
-        # ----------------------------------------------------
 
         prompt = f"""
 You are the final answer generator for Goal2Done.
@@ -188,105 +184,108 @@ USER GOAL:
 USER REQUEST:
 {instruction}
 
-INFORMATION COLLECTED FROM PREVIOUS ACTIONS:
+RESEARCH / INFORMATION FROM PREVIOUS ACTIONS:
 {research_data}
 
-Create the final response that should be shown
-directly to the user.
+Create the final response that should be shown directly to the user.
 
-IMPORTANT RULES:
+IMPORTANT:
 
-1. Answer the user's actual request directly.
+The user wants a CLEAN, SHORT, READABLE answer.
 
-2. Use the information collected from previous actions.
+Follow these rules:
 
-3. Do not invent information.
+1. Answer the user's actual question directly.
+2. Do not dump research results.
+3. Do not repeat information.
+4. Do not mention Goal2Done, tools, planner, executor,
+   verification, execution, context, APIs, or internal processing.
+5. Do not use HTML.
+6. Do not use <br>, <div>, or other HTML tags.
+7. Use simple Markdown.
+8. Prefer short paragraphs and bullet points.
+9. Avoid huge tables unless the user explicitly asks for a table.
+10. Keep normal answers between approximately 100-300 words.
+11. If the question is simple, keep the answer around 50-150 words.
+12. Use headings only when they improve readability.
+13. Highlight important terms with **bold**.
+14. Do not provide unnecessary background information.
+15. Do not repeat the question.
+16. Do not add a long conclusion.
 
-4. If the collected information is insufficient,
-   clearly say what is missing.
+For a simple technical question, use this structure when appropriate:
 
-5. Do not mention:
-   - Goal2Done
-   - planner
-   - executor
-   - verifier
-   - tools
-   - internal processing
-   - APIs
-   - execution context
+### Topic — Quick Overview
 
-6. Do not dump raw research results.
+One or two sentence introduction.
 
-7. Synthesize the information.
+**Key points**
+- Point 1
+- Point 2
+- Point 3
+- Point 4
+- Point 5
 
-8. Use simple Markdown.
+**Common uses**
+- Use 1
+- Use 2
+- Use 3
 
-9. Prefer short paragraphs and bullet points.
+**In short:** One concise summary.
 
-10. Use headings when useful.
+For research questions:
 
-11. Highlight important information using **bold**.
+### Short Answer
 
-12. Avoid unnecessary background information.
+One concise summary.
 
-13. Do not repeat the user's question.
+### Key Findings
 
-14. For research tasks, provide:
-    - a short answer
-    - key findings
-    - useful next steps when appropriate
+1. **Finding 1** — short explanation
+2. **Finding 2** — short explanation
+3. **Finding 3** — short explanation
+4. **Finding 4** — short explanation
+5. **Finding 5** — short explanation
 
-15. If sources contain conflicting information,
-    clearly mention the conflict.
+### Recommendation / Next Step
 
-16. Keep normal answers around 100-300 words.
+Only include this section if it is useful for the user's request.
 
-17. Simple questions can be shorter.
+For study plans:
 
-Return ONLY the final answer.
+### 7-Day Study Plan
+
+#### Day 1 — Topic
+- Task
+- Task
+- Task
+
+**Time:** ~3 hours
+
+Keep each day concise.
+
+Return ONLY the final user-facing answer.
 """
 
-        # ----------------------------------------------------
-        # OpenRouter
-        # ----------------------------------------------------
-
-        response = chat_completion(
-            model=ANSWER_MODEL,
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are a precise, concise "
-                        "final answer generator."
-                    ),
+                        "You are a helpful final-answer generator. "
+                        "Give the user the actual result they requested."
+                    )
                 },
                 {
                     "role": "user",
-                    "content": prompt,
-                },
+                    "content": prompt
+                }
             ],
-            max_tokens=3000,
-            fallback_models=[
-        "openai/gpt-6-luna",
-        "anthropic/claude-sonnet-4.5",
-    ],
+            temperature=0.2
         )
 
-        answer = (
-            response
-            .choices[0]
-            .message
-            .content
-            .strip()
-        )
-
-        if not answer:
-
-            return {
-                "status": "error",
-                "type": "answer",
-                "message": "Model returned an empty answer."
-            }
+        answer = response.choices[0].message.content
 
         return {
             "status": "success",
@@ -301,6 +300,7 @@ Return ONLY the final answer.
             "type": "answer",
             "message": str(e)
         }
+
 
 
 

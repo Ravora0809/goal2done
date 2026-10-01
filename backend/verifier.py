@@ -152,6 +152,91 @@ def verify_action(tool_name, result):
         }
 
     # ------------------------------------------------------
+    # GOOGLE CALENDAR - LIST
+    # ------------------------------------------------------
+
+    if tool_name == "calendar_list_events":
+
+        if status == "success":
+
+            events = result.get("events", [])
+
+            if isinstance(events, list):
+                return {
+                    "verified": True,
+                    "status": "verified",
+                    "category": "CALENDAR",
+                    "message": (
+                        f"Calendar read successfully with {len(events)} event(s)."
+                    ),
+                }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "CALENDAR",
+            "message": result.get(
+                "message",
+                "Calendar events could not be read.",
+            ),
+        }
+
+    # ------------------------------------------------------
+    # GOOGLE CALENDAR - CREATE / UPDATE
+    # ------------------------------------------------------
+
+    if tool_name in {"calendar_create_event", "calendar_update_event"}:
+
+        if status == "success":
+
+            event = result.get("event")
+
+            if isinstance(event, dict) and event.get("id"):
+                return {
+                    "verified": True,
+                    "status": "verified",
+                    "category": "CALENDAR",
+                    "message": (
+                        f"Calendar event '{event.get('title', 'Untitled event')}' "
+                        "was saved successfully."
+                    ),
+                }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "CALENDAR",
+            "message": result.get(
+                "message",
+                "Calendar event could not be saved.",
+            ),
+        }
+
+    # ------------------------------------------------------
+    # GOOGLE CALENDAR - DELETE
+    # ------------------------------------------------------
+
+    if tool_name == "calendar_delete_event":
+
+        if status == "success" and result.get("event_id"):
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "CALENDAR",
+                "message": "Calendar event was deleted successfully.",
+            }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "CALENDAR",
+            "message": result.get(
+                "message",
+                "Calendar event could not be deleted.",
+            ),
+        }
+
+    # ------------------------------------------------------
     # UNKNOWN TOOL
     # ------------------------------------------------------
 

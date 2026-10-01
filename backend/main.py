@@ -7,6 +7,7 @@ from planner import plan_goal
 from executor import execute_tool, run_tool
 from verifier import verify_action
 from firewall import requires_approval
+from google_calendar import calendar_list_events
 
 from database import (
     init_db,
@@ -108,6 +109,33 @@ def root():
         "status": "running",
         "version": "0.4",
     }
+
+
+# ==========================================================
+# CALENDAR EVENTS
+# ==========================================================
+
+@app.get("/calendar/events")
+def get_calendar_events(
+    start_time: str | None = None,
+    end_time: str | None = None,
+    max_results: int = 100,
+):
+    """Return Google Calendar events for the frontend calendar view."""
+
+    result = calendar_list_events(
+        start_time=start_time,
+        end_time=end_time,
+        max_results=max_results,
+    )
+
+    if result.get("status") != "success":
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message", "Could not read Google Calendar."),
+        )
+
+    return result
 
 
 # ==========================================================
