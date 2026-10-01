@@ -20,7 +20,7 @@ google-auth-oauthlib>=1.2.1
 python-docx
 reportlab
 requests
-
+os
 openai
 python-dotenv
 python-multipart
