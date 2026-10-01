@@ -22,3 +22,4 @@ requests
 openai
 python-dotenv
 # Google Drive uses the same Google API client packages above.
+python-multipart
