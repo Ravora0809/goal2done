@@ -4,7 +4,13 @@ import uuid
 from datetime import datetime, timezone
 
 
-DB_PATH = "/tmp/goal2done.db"
+if os.getenv("VERCEL") == "1":
+    DB_PATH = "/tmp/goal2done.db"
+else:
+    DB_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "goal2done.db"
+    )
 
 
 # ==========================================================
