@@ -3,7 +3,10 @@
 # ============================================================
 import os
 import json
-from groq import Groq
+from llm_client import (
+    chat_completion,
+    ANSWER_MODEL,
+)
 from ddgs import DDGS
 from datetime import datetime, timezone
 import dateparser
@@ -144,30 +147,37 @@ def browser_open(url: str):
 # ============================================================
 # GENERATE ANSWER
 # ============================================================
+# ============================================================
+# GENERATE ANSWER
+# ============================================================
+
 def generate_answer(instruction: str, context: dict):
 
     try:
-        api_key = os.getenv("GROQ_API_KEY")
 
-        if not api_key:
-            return {
-                "status": "error",
-                "type": "answer",
-                "message": "GROQ_API_KEY is not configured"
-            }
+        goal = context.get(
+            "goal",
+            ""
+        )
 
-        client = Groq(api_key=api_key)
+        previous_results = context.get(
+            "results",
+            []
+        )
 
-        goal = context.get("goal", "")
+        # ----------------------------------------------------
+        # Prepare research information
+        # ----------------------------------------------------
 
-        previous_results = context.get("results", [])
-
-        # Only pass useful tool output to the LLM
         research_data = json.dumps(
             previous_results,
             indent=2,
             ensure_ascii=False
         )
+
+        # ----------------------------------------------------
+        # Final answer prompt
+        # ----------------------------------------------------
 
         prompt = f"""
 You are the final answer generator for Goal2Done.
@@ -178,108 +188,105 @@ USER GOAL:
 USER REQUEST:
 {instruction}
 
-RESEARCH / INFORMATION FROM PREVIOUS ACTIONS:
+INFORMATION COLLECTED FROM PREVIOUS ACTIONS:
 {research_data}
 
-Create the final response that should be shown directly to the user.
+Create the final response that should be shown
+directly to the user.
 
-IMPORTANT:
+IMPORTANT RULES:
 
-The user wants a CLEAN, SHORT, READABLE answer.
+1. Answer the user's actual request directly.
 
-Follow these rules:
+2. Use the information collected from previous actions.
 
-1. Answer the user's actual question directly.
-2. Do not dump research results.
-3. Do not repeat information.
-4. Do not mention Goal2Done, tools, planner, executor,
-   verification, execution, context, APIs, or internal processing.
-5. Do not use HTML.
-6. Do not use <br>, <div>, or other HTML tags.
-7. Use simple Markdown.
-8. Prefer short paragraphs and bullet points.
-9. Avoid huge tables unless the user explicitly asks for a table.
-10. Keep normal answers between approximately 100-300 words.
-11. If the question is simple, keep the answer around 50-150 words.
-12. Use headings only when they improve readability.
-13. Highlight important terms with **bold**.
-14. Do not provide unnecessary background information.
-15. Do not repeat the question.
-16. Do not add a long conclusion.
+3. Do not invent information.
 
-For a simple technical question, use this structure when appropriate:
+4. If the collected information is insufficient,
+   clearly say what is missing.
 
-### Topic — Quick Overview
+5. Do not mention:
+   - Goal2Done
+   - planner
+   - executor
+   - verifier
+   - tools
+   - internal processing
+   - APIs
+   - execution context
 
-One or two sentence introduction.
+6. Do not dump raw research results.
 
-**Key points**
-- Point 1
-- Point 2
-- Point 3
-- Point 4
-- Point 5
+7. Synthesize the information.
 
-**Common uses**
-- Use 1
-- Use 2
-- Use 3
+8. Use simple Markdown.
 
-**In short:** One concise summary.
+9. Prefer short paragraphs and bullet points.
 
-For research questions:
+10. Use headings when useful.
 
-### Short Answer
+11. Highlight important information using **bold**.
 
-One concise summary.
+12. Avoid unnecessary background information.
 
-### Key Findings
+13. Do not repeat the user's question.
 
-1. **Finding 1** — short explanation
-2. **Finding 2** — short explanation
-3. **Finding 3** — short explanation
-4. **Finding 4** — short explanation
-5. **Finding 5** — short explanation
+14. For research tasks, provide:
+    - a short answer
+    - key findings
+    - useful next steps when appropriate
 
-### Recommendation / Next Step
+15. If sources contain conflicting information,
+    clearly mention the conflict.
 
-Only include this section if it is useful for the user's request.
+16. Keep normal answers around 100-300 words.
 
-For study plans:
+17. Simple questions can be shorter.
 
-### 7-Day Study Plan
-
-#### Day 1 — Topic
-- Task
-- Task
-- Task
-
-**Time:** ~3 hours
-
-Keep each day concise.
-
-Return ONLY the final user-facing answer.
+Return ONLY the final answer.
 """
 
-        response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+        # ----------------------------------------------------
+        # OpenRouter
+        # ----------------------------------------------------
+
+        response = chat_completion(
+            model=ANSWER_MODEL,
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are a helpful final-answer generator. "
-                        "Give the user the actual result they requested."
-                    )
+                        "You are a precise, concise "
+                        "final answer generator."
+                    ),
                 },
                 {
                     "role": "user",
-                    "content": prompt
-                }
+                    "content": prompt,
+                },
             ],
-            temperature=0.2
+            max_tokens=3000,
+            fallback_models=[
+        "openai/gpt-6-luna",
+        "anthropic/claude-sonnet-4.5",
+    ],
         )
 
-        answer = response.choices[0].message.content
+        answer = (
+            response
+            .choices[0]
+            .message
+            .content
+            .strip()
+        )
+
+        if not answer:
+
+            return {
+                "status": "error",
+                "type": "answer",
+                "message": "Model returned an empty answer."
+            }
 
         return {
             "status": "success",
@@ -294,7 +301,6 @@ Return ONLY the final user-facing answer.
             "type": "answer",
             "message": str(e)
         }
-
 
 
 

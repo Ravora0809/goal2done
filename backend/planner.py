@@ -1,6 +1,10 @@
 import json
 from groq_client import client
 from datetime import datetime
+from llm_client import (
+    chat_completion,
+    PLANNER_MODEL,
+)
 
 SYSTEM_PROMPT = """
 You are the planning engine for Goal2Done.
@@ -595,8 +599,8 @@ Return ONLY valid JSON.
 def plan_goal(goal: str):
     current_datetime = datetime.now().astimezone().isoformat()
 
-    response = client.chat.completions.create(
-    model="openai/gpt-oss-120b",
+    response = chat_completion(
+    model=PLANNER_MODEL,
     messages=[
         {
             "role": "system",
@@ -604,8 +608,13 @@ def plan_goal(goal: str):
         },
         {
             "role": "user",
-            "content": f"""Current date and time:{current_datetime} Important date/time rules:
-            1. Resolve relative expressions such as:
+            "content": f"""
+Current date and time:
+{current_datetime}
+
+Important date/time rules:
+
+1. Resolve relative expressions such as:
    - today
    - tomorrow
    - tonight
@@ -616,22 +625,30 @@ def plan_goal(goal: str):
 
 2. Never treat "tomorrow" as today.
 
-3. When creating reminders, output an explicit ISO-8601
-   datetime whenever the user gave a relative date/time.
+3. When creating reminders, output an explicit
+   ISO-8601 datetime whenever the user gave
+   a relative date/time.
 
 4. Preserve the user's intended date exactly.
 
-5. If the user says "tomorrow at 10 AM" and the current
-   date is September 30, 2026, the reminder MUST be
-   October 1, 2026 at 10:00 AM.
+5. If the user says "tomorrow at 10 AM" and the
+   current date is September 30, 2026, the reminder
+   MUST be October 1, 2026 at 10:00 AM.
 
 User goal:
 {goal}
 """
         }
     ],
-    temperature=0
+    max_tokens=6000,
+    # FALLBACK MODELS
+    fallback_models=[
+        "openai/gpt-6-luna",
+        "anthropic/claude-sonnet-4.5",
+    ],
 )
+   
+
 
     content = response.choices[0].message.content
 

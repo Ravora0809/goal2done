@@ -271,7 +271,7 @@ const STATUS_CONFIG = {
     className:
       "border-slate-500/20 " +
       "bg-slate-500/10 " +
-      "text-slate-400",
+      "text-slate-500 dark:text-slate-400",
   },
 
 };
@@ -420,7 +420,7 @@ function ResultContent({
             mt-2
             text-sm
             leading-6
-            text-slate-400
+            text-slate-500 dark:text-slate-400
           "
         >
 
@@ -479,7 +479,7 @@ function ResultContent({
           className="
             mt-2
             text-sm
-            text-slate-400
+            text-slate-500 dark:text-slate-400
           "
         >
 
@@ -514,14 +514,13 @@ function ResultContent({
       <div
         className="
           prose
-          prose-invert
           max-w-none
           text-sm
           leading-7
-          prose-headings:text-slate-100
-          prose-p:text-slate-300
+          prose-headings:text-slate-900 dark:text-slate-100
+          prose-p:text-slate-700 dark:text-slate-300
           prose-strong:text-white
-          prose-li:text-slate-300
+          prose-li:text-slate-700 dark:text-slate-300
         "
       >
 
@@ -558,7 +557,7 @@ function ResultContent({
         <p
           className="
             text-sm
-            text-slate-400
+            text-slate-500 dark:text-slate-400
           "
         >
           No search results returned.
@@ -590,8 +589,8 @@ function ResultContent({
               className="
                 rounded-xl
                 border
-                border-slate-800
-                bg-slate-900/50
+                border-slate-200 dark:border-slate-800
+                bg-slate-50 dark:bg-slate-900/50
                 p-4
               "
             >
@@ -611,7 +610,7 @@ function ResultContent({
                     className="
                       text-sm
                       font-semibold
-                      text-slate-200
+                      text-slate-800 dark:text-slate-200
                     "
                   >
 
@@ -629,7 +628,7 @@ function ResultContent({
                         line-clamp-3
                         text-xs
                         leading-5
-                        text-slate-400
+                        text-slate-500 dark:text-slate-400
                       "
                     >
 
@@ -697,8 +696,8 @@ function ResultContent({
         className="
           rounded-xl
           border
-          border-slate-800
-          bg-slate-900/50
+          border-slate-200 dark:border-slate-800
+          bg-slate-50 dark:bg-slate-900/50
           p-4
         "
       >
@@ -710,7 +709,7 @@ function ResultContent({
             gap-2
             text-sm
             font-semibold
-            text-slate-200
+            text-slate-800 dark:text-slate-200
           "
         >
 
@@ -732,7 +731,7 @@ function ResultContent({
             className="
               mt-2
               text-xs
-              text-slate-400
+              text-slate-500 dark:text-slate-400
             "
           >
 
@@ -768,8 +767,8 @@ function ResultContent({
         className="
           rounded-xl
           border
-          border-slate-800
-          bg-slate-900/50
+          border-slate-200 dark:border-slate-800
+          bg-slate-50 dark:bg-slate-900/50
           p-4
         "
       >
@@ -781,7 +780,7 @@ function ResultContent({
             gap-2
             text-sm
             font-semibold
-            text-slate-200
+            text-slate-800 dark:text-slate-200
           "
         >
 
@@ -816,8 +815,8 @@ function ResultContent({
         className="
           rounded-xl
           border
-          border-slate-800
-          bg-slate-900/50
+          border-slate-200 dark:border-slate-800
+          bg-slate-50 dark:bg-slate-900/50
           p-4
         "
       >
@@ -828,7 +827,7 @@ function ResultContent({
             items-center
             gap-2
             text-sm
-            text-slate-300
+            text-slate-700 dark:text-slate-300
           "
         >
 
@@ -859,12 +858,12 @@ function ResultContent({
         overflow-auto
         rounded-xl
         border
-        border-slate-800
-        bg-slate-950
+        border-slate-200 dark:border-slate-800
+        bg-white dark:bg-slate-950
         p-4
         text-xs
         leading-6
-        text-slate-300
+        text-slate-700 dark:text-slate-300
       "
     >
 
@@ -999,8 +998,7 @@ function ActionCard({
         overflow-hidden
         rounded-2xl
         border
-        border-slate-800
-        bg-slate-950/40
+        border-slate-200 bg-white dark:border-slate-200 dark:border-slate-800 dark:bg-white dark:bg-slate-950/40
       "
     >
 
@@ -1025,7 +1023,7 @@ function ActionCard({
           py-4
           text-left
           transition
-          hover:bg-slate-900/50
+          hover:bg-slate-50 dark:hover:bg-slate-50 dark:bg-slate-900/50
         "
       >
 
@@ -1076,7 +1074,7 @@ function ActionCard({
                 truncate
                 text-sm
                 font-bold
-                text-slate-100
+                text-slate-900 dark:text-slate-100
               "
             >
 
@@ -1104,7 +1102,7 @@ function ActionCard({
               line-clamp-2
               text-xs
               leading-5
-              text-slate-400
+              text-slate-500 dark:text-slate-400
             "
           >
 
@@ -1179,7 +1177,7 @@ function ActionCard({
         <div
           className="
             border-t
-            border-slate-800
+            border-slate-200 dark:border-slate-800
           "
         >
 
@@ -1350,7 +1348,7 @@ function ActionCard({
           <div
             className="
               border-t
-              border-slate-800
+              border-slate-200 dark:border-slate-800
               px-5
               py-3
             "
@@ -1397,7 +1395,7 @@ function ActionCard({
                           : verification.status ===
                               "failed"
                             ? "text-red-400"
-                            : "text-slate-400"
+                            : "text-slate-500 dark:text-slate-400"
                   }
                 `}
               >
@@ -1436,8 +1434,8 @@ function ActionCard({
                 justify-end
                 gap-3
                 border-t
-                border-slate-800
-                bg-slate-900/40
+                border-slate-200 dark:border-slate-800
+                bg-slate-50 dark:bg-slate-900/40
                 px-5
                 py-4
               "
