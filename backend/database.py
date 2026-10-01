@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 
-DB_PATH = "goal2done.db"
+DB_PATH = "/tmp/goal2done.db"
 
 
 # ==========================================================
