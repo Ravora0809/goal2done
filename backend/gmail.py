@@ -31,45 +31,13 @@ TOKEN_FILE = os.getenv(
 )
 
 
-def _get_credentials() -> Credentials:
-    """Load/refresh Gmail OAuth credentials or start local OAuth consent."""
-    creds: Optional[Credentials] = None
-
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-    if creds and creds.valid:
-        return creds
-
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        if not os.path.exists(CREDENTIALS_FILE):
-            raise FileNotFoundError(
-                f"Google OAuth credentials not found: {CREDENTIALS_FILE}. "
-                "Save your Desktop app OAuth JSON as credentials.json."
-            )
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            CREDENTIALS_FILE,
-            SCOPES,
-        )
-        creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
-
-    with open(TOKEN_FILE, "w", encoding="utf-8") as token:
-        token.write(creds.to_json())
-
-    return creds
+def _get_credentials(user_id: str) -> Credentials:
+    from google_auth import get_user_credentials
+    return get_user_credentials(user_id, SCOPES)
 
 
-def _service():
-    return build(
-        "gmail",
-        "v1",
-        credentials=_get_credentials(),
-        cache_discovery=False,
-    )
-
+def _service(user_id: str):
+    return build("gmail", "v1", credentials=_get_credentials(user_id), cache_discovery=False)
 
 def send_email(
     to: str | List[str],
@@ -77,6 +45,7 @@ def send_email(
     body: str,
     cc: Optional[str | List[str]] = None,
     bcc: Optional[str | List[str]] = None,
+    user_id: str | None = None,
 ):
     """Send a plain-text email from the authenticated Gmail account."""
     try:
@@ -105,7 +74,7 @@ def send_email(
 
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
-        response = _service().users().messages().send(
+        response = _service(user_id).users().messages().send(
             userId="me",
             body={"raw": raw},
         ).execute()
@@ -127,11 +96,11 @@ def send_email(
         }
 
 
-def list_recent_emails(max_results: int = 10):
+def list_recent_emails(max_results: int = 10, user_id: str | None = None):
     """List recent Gmail message metadata without reading full message bodies."""
     try:
         max_results = max(1, min(int(max_results), 50))
-        service = _service()
+        service = _service(user_id)
 
         response = service.users().messages().list(
             userId="me",
@@ -177,8 +146,3 @@ def list_recent_emails(max_results: int = 10):
         }
 
 
-if __name__ == "__main__":
-    print("Starting Gmail authorization...")
-    credentials = _get_credentials()
-    print("Gmail authorization successful!")
-    print(f"Token saved to: {TOKEN_FILE}")

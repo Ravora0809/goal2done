@@ -1,16 +1,14 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+import os
+import uuid
 
 from planner import plan_goal
 from executor import execute_tool, run_tool
 from verifier import verify_action
 from firewall import requires_approval
-from google_calendar import calendar_list_events
-from google_drive import drive_list_files, drive_search, drive_read_file
-from google_docs import docs_create_document, docs_read_document, docs_append_text
-from google_sheets import sheets_create_spreadsheet, sheets_read_values, sheets_write_values, sheets_append_values, sheets_clear_values
 
 from database import (
     init_db,
@@ -30,6 +28,18 @@ from database import (
     delete_reminder_record,
 )
 
+from google_auth import (
+    authorization_url,
+    exchange_code,
+    google_user,
+    make_state,
+    verify_state,
+    create_session,
+    verify_session,
+    save_connection,
+)
+from user_store import upsert_user, get_user
+
 from reminder_scheduler import (
     start_reminder_scheduler,
     stop_reminder_scheduler,
@@ -43,11 +53,13 @@ from reminder_scheduler import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    start_reminder_scheduler()
+    if os.getenv("VERCEL") != "1":
+        start_reminder_scheduler()
 
     yield
 
-    stop_reminder_scheduler()
+    if os.getenv("VERCEL") != "1":
+        stop_reminder_scheduler()
 
 
 # ==========================================================
@@ -69,95 +81,13 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://127.0.0.1:5173",
         "http://localhost:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ==========================================================
-# GOOGLE DOCS / SHEETS TEST ENDPOINTS
-# ==========================================================
-
-@app.post("/docs/create")
-def create_google_doc(title: str, content: str = ""):
-    return docs_create_document(title=title, content=content)
-
-
-@app.get("/docs/{document_id}")
-def get_google_doc(document_id: str, max_chars: int = 50000):
-    return docs_read_document(document_id=document_id, max_chars=max_chars)
-
-
-@app.post("/docs/{document_id}/append")
-def append_google_doc(document_id: str, content: str):
-    return docs_append_text(document_id=document_id, content=content)
-
-
-@app.post("/sheets/create")
-def create_google_sheet(title: str):
-    return sheets_create_spreadsheet(title=title)
-
-
-@app.get("/sheets/{spreadsheet_id}/values")
-def get_google_sheet_values(spreadsheet_id: str, range_name: str):
-    return sheets_read_values(spreadsheet_id=spreadsheet_id, range_name=range_name)
-
-
-@app.post("/sheets/{spreadsheet_id}/values")
-def write_google_sheet_values(spreadsheet_id: str, range_name: str, values: list, input_option: str = "USER_ENTERED"):
-    return sheets_write_values(spreadsheet_id=spreadsheet_id, range_name=range_name, values=values, input_option=input_option)
-
-
-@app.post("/sheets/{spreadsheet_id}/append")
-def append_google_sheet_values(spreadsheet_id: str, range_name: str, values: list, input_option: str = "USER_ENTERED"):
-    return sheets_append_values(spreadsheet_id=spreadsheet_id, range_name=range_name, values=values, input_option=input_option)
-
-
-@app.post("/sheets/{spreadsheet_id}/clear")
-def clear_google_sheet_values(spreadsheet_id: str, range_name: str):
-    return sheets_clear_values(spreadsheet_id=spreadsheet_id, range_name=range_name)
-
-
-
-
-# ==========================================================
-# GOOGLE DRIVE READ API
-# ==========================================================
-
-@app.get("/drive/files")
-def get_drive_files(
-    folder_id: str | None = None,
-    max_results: int = 20,
-):
-    return drive_list_files(
-        folder_id=folder_id,
-        max_results=max_results,
-    )
-
-
-@app.get("/drive/search")
-def search_drive_files(
-    query: str,
-    max_results: int = 20,
-):
-    return drive_search(
-        query=query,
-        max_results=max_results,
-    )
-
-
-@app.get("/drive/file/{file_id}")
-def read_drive_file(
-    file_id: str,
-    max_chars: int = 50000,
-):
-    return drive_read_file(
-        file_id=file_id,
-        max_chars=max_chars,
-    )
 
 
 # ==========================================================
@@ -198,30 +128,93 @@ def root():
 
 
 # ==========================================================
-# CALENDAR EVENTS
+# AUTHENTICATION / GOOGLE CONNECTION
 # ==========================================================
 
-@app.get("/calendar/events")
-def get_calendar_events(
-    start_time: str | None = None,
-    end_time: str | None = None,
-    max_results: int = 100,
-):
-    """Return Google Calendar events for the frontend calendar view."""
+def get_current_user(request: Request):
+    token = request.cookies.get("goal2done_session")
+    user_id = verify_session(token) if token else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Please sign in with Google first.")
+    user = get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User session is no longer valid. Please sign in again.")
+    return user
 
-    result = calendar_list_events(
-        start_time=start_time,
-        end_time=end_time,
-        max_results=max_results,
-    )
 
-    if result.get("status") != "success":
+@app.get("/auth/google/login")
+def google_login():
+    try:
+        response = Response(status_code=307)
+        response.headers["Location"] = authorization_url(make_state())
+        return response
+    except Exception as exc:
         raise HTTPException(
-            status_code=502,
-            detail=result.get("message", "Could not read Google Calendar."),
+            status_code=500,
+            detail=f"Google login configuration failed: {exc}",
         )
 
-    return result
+
+@app.get("/auth/google/callback")
+def google_callback(code: str, state: str):
+    if not verify_state(state):
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
+
+    try:
+        credentials = exchange_code(code)
+        profile = google_user(credentials)
+        google_sub = profile.get("id")
+        email = profile.get("email", "")
+        name = profile.get("name", email)
+        if not google_sub:
+            raise RuntimeError("Google did not return a unique user ID.")
+
+        user_id = "usr_" + uuid.uuid5(uuid.NAMESPACE_URL, "goal2done:google:" + google_sub).hex
+        upsert_user(user_id, google_sub, email, name)
+        save_connection(user_id, credentials)
+
+        frontend_url = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173")
+
+        # Keep local frontend/backend on the same host so the session
+        # cookie can be sent correctly by the browser.
+        if frontend_url.startswith("http://localhost:"):
+            frontend_url = frontend_url.replace(
+                "http://localhost:",
+                "http://127.0.0.1:",
+                1,
+            )
+
+        response = Response(status_code=307)
+        response.headers["Location"] = frontend_url
+        response.set_cookie(
+            key="goal2done_session",
+            value=create_session(user_id),
+            httponly=True,
+            secure=os.getenv("COOKIE_SECURE", "0") == "1",
+            samesite="none" if os.getenv("COOKIE_SAMESITE_NONE", "0") == "1" else "lax",
+            max_age=60 * 60 * 24 * 7,
+            path="/",
+        )
+        return response
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Google authentication failed: {exc}")
+
+
+@app.get("/auth/me")
+def auth_me(user=Depends(get_current_user)):
+    return {"authenticated": True, "user": user}
+
+
+@app.get("/auth/logout")
+def auth_logout():
+    response = Response(status_code=204)
+    response.delete_cookie("goal2done_session", path="/")
+    return response
+
+
+@app.get("/auth/google/state")
+def google_state():
+    return {"state": make_state()}
 
 
 # ==========================================================
@@ -229,7 +222,7 @@ def get_calendar_events(
 # ==========================================================
 
 @app.post("/goal")
-def process_goal(request: GoalRequest):
+def process_goal(request: GoalRequest, user=Depends(get_current_user)):
 
     # ======================================================
     # 1. ASK PLANNER TO CREATE PLAN
@@ -259,7 +252,8 @@ def process_goal(request: GoalRequest):
     # ======================================================
 
     goal_id = create_goal(
-        request.goal
+        request.goal,
+        user_id=user["id"],
     )
 
     actions = []
@@ -467,6 +461,7 @@ def process_goal(request: GoalRequest):
             result = execute_tool(
                 tool_name,
                 tool_arguments,
+                user_id=user["id"],
             )
 
         except Exception as e:
@@ -697,6 +692,7 @@ def process_goal(request: GoalRequest):
 @app.post("/approve")
 def approve_action(
     request: ApprovalRequest,
+    user=Depends(get_current_user),
 ):
 
     # ======================================================
@@ -713,6 +709,9 @@ def approve_action(
             status_code=404,
             detail="Approval not found",
         )
+
+    if approval.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="This approval does not belong to the signed-in user.")
 
     # ======================================================
     # 2. CHECK APPROVAL STATUS
@@ -760,6 +759,7 @@ def approve_action(
         result = run_tool(
             tool_name,
             arguments,
+            user_id=user["id"],
         )
 
     except Exception as e:
@@ -917,6 +917,7 @@ def approve_action(
 @app.post("/reject")
 def reject_action(
     request: RejectRequest,
+    user=Depends(get_current_user),
 ):
 
     # ======================================================
@@ -933,6 +934,10 @@ def reject_action(
             status_code=404,
             detail="Approval not found",
         )
+
+
+    if approval.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="This approval does not belong to the signed-in user.")
 
     # ======================================================
     # 2. CHECK APPROVAL STATUS
@@ -1028,11 +1033,11 @@ def reject_action(
 # ==========================================================
 
 @app.get("/history")
-def history():
+def history(user=Depends(get_current_user)):
 
     return {
         "history":
-            get_history()
+            get_history(user_id=user["id"])
     }
 
 
@@ -1043,6 +1048,7 @@ def history():
 @app.get("/history/{goal_id}")
 def goal_history(
     goal_id: str,
+    user=Depends(get_current_user),
 ):
 
     goal = get_goal(
@@ -1055,6 +1061,9 @@ def goal_history(
             status_code=404,
             detail="Goal not found",
         )
+
+    if goal.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="This goal does not belong to the signed-in user.")
 
     return {
 
@@ -1069,16 +1078,39 @@ def goal_history(
 
 
 # ==========================================================
+# GOOGLE CALENDAR API
+# ==========================================================
+
+@app.get("/calendar/events")
+def calendar_events(
+    start_time: str | None = None,
+    end_time: str | None = None,
+    max_results: int = 100,
+    user=Depends(get_current_user),
+):
+    from tools import calendar_list_events_tool
+    result = calendar_list_events_tool(
+        start_time=start_time,
+        end_time=end_time,
+        max_results=max_results,
+        user_id=user["id"],
+    )
+    if result.get("status") != "success":
+        raise HTTPException(status_code=502, detail=result.get("message", "Calendar request failed."))
+    return {"status": "success", "events": result.get("events", [])}
+
+
+# ==========================================================
 # REMINDERS
 # ==========================================================
 
 @app.get("/reminders")
-def reminders():
+def reminders(user=Depends(get_current_user)):
 
     return {
 
         "reminders":
-            get_reminders()
+            get_reminders(user_id=user["id"])
     }
 # ==========================================================
 # UPDATE REMINDER
@@ -1095,7 +1127,14 @@ class ReminderUpdateRequest(BaseModel):
 def update_reminder_endpoint(
     reminder_id: str,
     request: ReminderUpdateRequest,
+    user=Depends(get_current_user),
 ):
+
+    existing = __import__("database").get_reminder(reminder_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    if existing.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="This reminder does not belong to the signed-in user.")
 
     from tools import update_reminder
 
@@ -1103,6 +1142,7 @@ def update_reminder_endpoint(
         reminder_id=reminder_id,
         title=request.title,
         time=request.time,
+        user_id=user["id"],
     )
 
     if result.get("status") != "success":
@@ -1125,12 +1165,20 @@ def update_reminder_endpoint(
 @app.delete("/reminders/{reminder_id}")
 def delete_reminder_endpoint(
     reminder_id: str,
+    user=Depends(get_current_user),
 ):
+
+    existing = __import__("database").get_reminder(reminder_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    if existing.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="This reminder does not belong to the signed-in user.")
 
     from tools import delete_reminder
 
     result = delete_reminder(
-        reminder_id=reminder_id
+        reminder_id=reminder_id,
+        user_id=user["id"]
     )
 
     if result.get("status") != "success":

@@ -8,10 +8,10 @@ from tools import (
     delete_reminder,
     browser_open,
     generate_answer,
-    calendar_list_events,
-    calendar_create_event,
-    calendar_update_event,
-    calendar_delete_event,
+    calendar_list_events_tool,
+    calendar_create_event_tool,
+    calendar_update_event_tool,
+    calendar_delete_event_tool,
     send_email_tool,
     email_list_recent,
     send_message_tool,
@@ -36,7 +36,20 @@ from tools import (
 )
 
 
-def run_tool(tool_name, arguments):
+def run_tool(tool_name, arguments, user_id=None):
+
+    arguments = dict(arguments or {})
+    google_tools = {
+        "calendar_list_events", "calendar_create_event", "calendar_update_event", "calendar_delete_event",
+        "drive_list_files", "drive_search", "drive_read_file",
+        "docs_create_document", "docs_read_document", "docs_append_text",
+        "sheets_create_spreadsheet", "sheets_read_values", "sheets_write_values", "sheets_append_values", "sheets_clear_values",
+        "send_email", "email_list_recent",
+    }
+    if tool_name in google_tools:
+        if not user_id:
+            return {"status": "error", "message": "No authenticated user was provided for Google integration."}
+        arguments["user_id"] = user_id
 
     if tool_name == "search_web":
         return search_web(**arguments)
@@ -63,16 +76,16 @@ def run_tool(tool_name, arguments):
         return generate_answer(**arguments)
 
     if tool_name == "calendar_list_events":
-        return calendar_list_events(**arguments)
+        return calendar_list_events_tool(**arguments)
 
     if tool_name == "calendar_create_event":
-        return calendar_create_event(**arguments)
+        return calendar_create_event_tool(**arguments)
 
     if tool_name == "calendar_update_event":
-        return calendar_update_event(**arguments)
+        return calendar_update_event_tool(**arguments)
 
     if tool_name == "calendar_delete_event":
-        return calendar_delete_event(**arguments)
+        return calendar_delete_event_tool(**arguments)
 
     if tool_name == "docs_create_document":
         return docs_create_document_tool(**arguments)
@@ -136,7 +149,7 @@ def run_tool(tool_name, arguments):
     }
 
 
-def execute_tool(tool_name, arguments):
+def execute_tool(tool_name, arguments, user_id=None):
 
     if requires_approval(tool_name):
 
@@ -153,4 +166,5 @@ def execute_tool(tool_name, arguments):
     return run_tool(
         tool_name,
         arguments,
+        user_id=user_id,
     )

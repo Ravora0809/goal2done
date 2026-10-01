@@ -40,7 +40,14 @@ import ReminderCard from "./components/ReminderCard";
 
 
 
-const API = "http://127.0.0.1:8000";
+const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
+async function apiFetch(path, options = {}) {
+  return fetch(`${API}${path}`, {
+    ...options,
+    credentials: "include",
+  });
+}
 
 
 
@@ -784,7 +791,7 @@ function CalendarPanel({ reminders, onReminderChanged }) {
 
 
 
-      const response = await fetch(`${API}/calendar/events?${params.toString()}`);
+      const response = await apiFetch(`/calendar/events?${params.toString()}`);
 
       const data = await response.json();
 
@@ -1379,6 +1386,8 @@ function App() {
   const [input, setInput] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   const [history, setHistory] = useState([]);
 
@@ -1421,14 +1430,28 @@ function App() {
 
 
   useEffect(() => {
-
-    loadHistory();
-
-    loadReminders();
-
+    let active = true;
+    apiFetch("/auth/me")
+      .then(async (response) => {
+        if (!active) return;
+        if (!response.ok) {
+          setUser(null);
+          return;
+        }
+        const data = await response.json();
+        setUser(data.user || null);
+      })
+      .catch(() => { if (active) setUser(null); })
+      .finally(() => { if (active) setAuthLoading(false); });
+    return () => { active = false; };
   }, []);
 
-
+  useEffect(() => {
+    if (!authLoading && user) {
+      loadHistory();
+      loadReminders();
+    }
+  }, [authLoading, user]);
 
   useEffect(() => {
 
@@ -1466,7 +1489,7 @@ function App() {
 
     try {
 
-      const response = await fetch(`${API}/history`);
+      const response = await apiFetch(`/history`);
 
       if (!response.ok) return;
 
@@ -1488,7 +1511,7 @@ function App() {
 
     try {
 
-      const response = await fetch(`${API}/reminders`);
+      const response = await apiFetch(`/reminders`);
 
       if (!response.ok) return;
 
@@ -1565,52 +1588,6 @@ function getUserFacingResult(action) {
 
       return `• ${title}${when ? ` — ${when}` : ""}`;
     }).join("\n");
-  }
-
-  // MAPS / TRAVEL
-  if (result.type === "maps_search" || result.type === "maps") {
-    const places = Array.isArray(result.places) ? result.places : [];
-    const primaryName = result.name || result.display_name || "Location";
-    const primaryAddress = result.display_name && result.display_name !== primaryName
-      ? result.display_name
-      : "";
-    const mapUrl = result.map_url || result.url || "";
-
-    const lines = [
-      `📍 ${primaryName}`,
-      primaryAddress,
-      mapUrl ? `Open in map: ${mapUrl}` : "",
-    ].filter(Boolean);
-
-    if (places.length > 1) {
-      const alternatives = places.slice(1, 5).map((place) => {
-        const name = place.name || place.display_name || "Location";
-        const address = place.display_name && place.display_name !== name
-          ? ` — ${place.display_name}`
-          : "";
-        return `• ${name}${address}`;
-      });
-      lines.push("", "Other matches:", ...alternatives);
-    }
-
-    return lines.join("\n");
-  }
-
-  if (result.type === "maps_directions") {
-    const origin = result.origin || "Origin";
-    const destination = result.destination || "Destination";
-    const distance = result.distance ||
-      (result.distance_km != null ? `${result.distance_km} km` : "");
-    const duration = result.duration ||
-      (result.duration_minutes != null ? `${result.duration_minutes} min` : "");
-    const mapUrl = result.map_url || result.url || "";
-
-    return [
-      `🚗 ${origin} → ${destination}`,
-      distance ? `Distance: ${distance}` : "",
-      duration ? `Estimated driving time: ${duration}` : "",
-      mapUrl ? `Open route: ${mapUrl}` : "",
-    ].filter(Boolean).join("\n");
   }
 
   if (Array.isArray(result.emails)) {
@@ -1753,7 +1730,7 @@ instead of executing the goal.
 
 
 
-      const response = await fetch(`${API}/goal`, {
+      const response = await apiFetch(`/goal`, {
 
         method: "POST",
 
@@ -1912,7 +1889,7 @@ instead of executing the goal.
 
     try {
 
-      const response = await fetch(`${API}/approve`, {
+      const response = await apiFetch(`/approve`, {
 
         method: "POST",
 
@@ -2010,7 +1987,7 @@ instead of executing the goal.
 
     try {
 
-      const response = await fetch(`${API}/reject`, {
+      const response = await apiFetch(`/reject`, {
 
         method: "POST",
 
@@ -2152,9 +2129,35 @@ instead of executing the goal.
 
 
 
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <div className="text-sm font-semibold">Checking your Goal2Done account…</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-white">
+        <div className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center shadow-2xl">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600"><Sparkles size={24} /></div>
+          <h1 className="mt-5 text-2xl font-extrabold">Welcome to Goal2Done</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-400">Sign in with Google to connect your own Calendar, Gmail, Drive, Docs and Sheets.</p>
+          <a href={`${API}/auth/google/login`} className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-bold text-slate-900 hover:bg-slate-100">Continue with Google</a>
+          <p className="mt-4 text-[11px] text-slate-500">Each Google connection is isolated to its Goal2Done user.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
 
     <div className="h-screen overflow-hidden bg-[#f8fafc] text-slate-900 transition-colors duration-200 dark:bg-[#0b1120] dark:text-slate-100">
+      <div className="fixed right-4 top-4 z-50 flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-xs text-slate-300 shadow-xl backdrop-blur">
+        <span className="max-w-[180px] truncate">{user.email}</span>
+        <button type="button" onClick={async () => { await apiFetch("/auth/logout"); window.location.reload(); }} className="font-bold text-slate-400 hover:text-white">Sign out</button>
+      </div>
 
       <div className="flex h-full min-h-0">
 

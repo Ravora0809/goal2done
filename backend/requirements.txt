@@ -11,8 +11,8 @@ google-auth
 google-auth-oauthlib
 python-docx
 reportlab
-
-certifi>=2025.1.31
+cryptography
+certifi
 # Goal2Done Google Calendar integration
 google-api-python-client>=2.149.0
 google-auth-httplib2>=0.2.0
@@ -22,5 +22,6 @@ reportlab
 requests
 openai
 python-dotenv
-python-multipart
 # Google Drive uses the same Google API client packages above.
+
+python-multipart

@@ -36,39 +36,13 @@ TOKEN_FILE = os.getenv(
 )
 
 
-def _get_credentials() -> Credentials:
-    creds: Optional[Credentials] = None
-
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-    if creds and creds.valid:
-        return creds
-
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        if not os.path.exists(CREDENTIALS_FILE):
-            raise FileNotFoundError(
-                f"Google OAuth credentials not found: {CREDENTIALS_FILE}. "
-                "Use the same Desktop OAuth credentials.json used by Calendar."
-            )
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            CREDENTIALS_FILE,
-            SCOPES,
-        )
-        creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
-
-    with open(TOKEN_FILE, "w", encoding="utf-8") as token:
-        token.write(creds.to_json())
-
-    return creds
+def _get_credentials(user_id: str) -> Credentials:
+    from google_auth import get_user_credentials
+    return get_user_credentials(user_id, SCOPES)
 
 
-def _service():
-    return build("drive", "v3", credentials=_get_credentials(), cache_discovery=False)
-
+def _service(user_id: str):
+    return build("drive", "v3", credentials=_get_credentials(user_id), cache_discovery=False)
 
 def _escape_drive_query_value(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
@@ -77,10 +51,11 @@ def _escape_drive_query_value(value: str) -> str:
 def drive_list_files(
     folder_id: Optional[str] = None,
     max_results: int = 20,
+    user_id: str | None = None,
 ):
     """List files/folders visible to the authenticated Drive account."""
     try:
-        service = _service()
+        service = _service(user_id)
         query_parts = ["trashed = false"]
 
         if folder_id:
@@ -114,10 +89,10 @@ def drive_list_files(
         }
 
 
-def drive_search(query: str, max_results: int = 20):
+def drive_search(query: str, max_results: int = 20, user_id: str | None = None):
     """Search Drive by filename and indexed/full text."""
     try:
-        service = _service()
+        service = _service(user_id)
         safe_query = _escape_drive_query_value(query.strip())
 
         q = (
@@ -185,10 +160,10 @@ def _export_google_workspace_file(service, file_id: str, mime_type: str) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def drive_read_file(file_id: str, max_chars: int = 50000):
+def drive_read_file(file_id: str, max_chars: int = 50000, user_id: str | None = None):
     """Read text from a Drive file or return useful metadata for binaries."""
     try:
-        service = _service()
+        service = _service(user_id)
         metadata = service.files().get(
             fileId=file_id,
             fields=(

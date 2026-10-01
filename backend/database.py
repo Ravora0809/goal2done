@@ -1,9 +1,16 @@
 import sqlite3
 import json
 import uuid
+import os
 from datetime import datetime, timezone
 import os
 
+<<<<<<< HEAD
+=======
+
+# Vercel deployment filesystems are read-only.
+# Keep local development persistent, but use /tmp on Vercel.
+>>>>>>> 83c15fc (added few files)
 if os.getenv("VERCEL") == "1":
     DB_PATH = "/tmp/goal2done.db"
 else:
@@ -43,6 +50,7 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS goals (
             id TEXT PRIMARY KEY,
+            user_id TEXT,
             goal TEXT NOT NULL,
             status TEXT NOT NULL,
             created_at TEXT NOT NULL,
@@ -71,6 +79,12 @@ def init_db():
         cursor.execute("""
             ALTER TABLE goals
             ADD COLUMN clarification_answer TEXT
+        """)
+
+    if "user_id" not in columns:
+        cursor.execute("""
+            ALTER TABLE goals
+            ADD COLUMN user_id TEXT
         """)
 
     # ======================================================
@@ -118,6 +132,7 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS reminders (
             id TEXT PRIMARY KEY,
+            user_id TEXT,
             title TEXT NOT NULL,
             remind_at TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
@@ -125,6 +140,10 @@ def init_db():
             triggered_at TEXT
         )
     """)
+
+    reminder_columns = {row["name"] for row in cursor.execute("PRAGMA table_info(reminders)").fetchall()}
+    if "user_id" not in reminder_columns:
+        cursor.execute("ALTER TABLE reminders ADD COLUMN user_id TEXT")
 
     connection.commit()
     connection.close()
@@ -134,7 +153,7 @@ def init_db():
 # GOALS
 # ==========================================================
 
-def create_goal(goal: str):
+def create_goal(goal: str, user_id: str | None = None):
 
     goal_id = str(uuid.uuid4())
     timestamp = now()
@@ -146,6 +165,7 @@ def create_goal(goal: str):
         INSERT INTO goals
         (
             id,
+            user_id,
             goal,
             status,
             created_at,
@@ -153,10 +173,11 @@ def create_goal(goal: str):
             clarification_questions,
             clarification_answer
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             goal_id,
+            user_id,
             goal,
             "planning",
             timestamp,
@@ -491,12 +512,15 @@ def get_approval(approval_id: str):
             a.status AS approval_status,
             a.created_at AS approval_created_at,
             e.goal_id,
+            g.user_id,
             e.tool,
             e.arguments,
             e.status AS execution_status
         FROM approvals a
         JOIN executions e
         ON a.execution_id = e.id
+        LEFT JOIN goals g
+        ON e.goal_id = g.id
         WHERE a.id = ?
         """,
         (approval_id,)
@@ -531,12 +555,15 @@ def get_approval_for_execution(
             a.created_at AS approval_created_at,
             a.resolved_at,
             e.goal_id,
+            g.user_id,
             e.tool,
             e.arguments,
             e.status AS execution_status
         FROM approvals a
         JOIN executions e
         ON a.execution_id = e.id
+        LEFT JOIN goals g
+        ON e.goal_id = g.id
         WHERE a.execution_id = ?
         ORDER BY a.created_at DESC
         LIMIT 1
@@ -587,31 +614,39 @@ def resolve_approval(
 # HISTORY
 # ==========================================================
 
-def get_history(limit=50):
+def get_history(limit=50, user_id: str | None = None):
 
     connection = get_connection()
 
-    rows = connection.execute(
-        """
-        SELECT
-            g.id AS goal_id,
-            g.goal,
-            g.status AS goal_status,
-            g.created_at,
-            e.id AS execution_id,
-            e.tool,
-            e.arguments,
-            e.status AS execution_status,
-            e.result,
-            e.verification
-        FROM goals g
-        LEFT JOIN executions e
-        ON g.id = e.goal_id
-        ORDER BY g.created_at DESC
-        LIMIT ?
-        """,
-        (limit,)
-    ).fetchall()
+    if user_id:
+        rows = connection.execute(
+            """
+            SELECT
+                g.id AS goal_id, g.goal, g.status AS goal_status, g.created_at,
+                e.id AS execution_id, e.tool, e.arguments,
+                e.status AS execution_status, e.result, e.verification
+            FROM goals g
+            LEFT JOIN executions e ON g.id = e.goal_id
+            WHERE g.user_id = ?
+            ORDER BY g.created_at DESC
+            LIMIT ?
+            """,
+            (user_id, limit)
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            """
+            SELECT
+                g.id AS goal_id, g.goal, g.status AS goal_status, g.created_at,
+                e.id AS execution_id, e.tool, e.arguments,
+                e.status AS execution_status, e.result, e.verification
+            FROM goals g
+            LEFT JOIN executions e ON g.id = e.goal_id
+            ORDER BY g.created_at DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
 
     connection.close()
 
@@ -648,7 +683,8 @@ def get_history(limit=50):
 
 def create_reminder_record(
     title,
-    remind_at
+    remind_at,
+    user_id: str | None = None
 ):
 
     conn = get_connection()
@@ -662,16 +698,18 @@ def create_reminder_record(
         """
         INSERT INTO reminders (
             id,
+            user_id,
             title,
             remind_at,
             status,
             created_at,
             triggered_at
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reminder_id,
+            user_id,
             title,
             remind_at,
             "pending",
@@ -701,6 +739,7 @@ def get_due_reminders(current_time):
         """
         SELECT
             id,
+            user_id,
             title,
             remind_at,
             status,
@@ -758,24 +797,29 @@ def mark_reminder_triggered(reminder_id):
 # GET ALL ACTIVE REMINDERS
 # ==========================================================
 
-def get_reminders():
+def get_reminders(user_id: str | None = None):
 
     conn = get_connection()
 
-    rows = conn.execute(
-        """
-        SELECT
-            id,
-            title,
-            remind_at,
-            status,
-            created_at,
-            triggered_at
-        FROM reminders
-        WHERE status = 'pending'
-        ORDER BY remind_at ASC
-        """
-    ).fetchall()
+    if user_id:
+        rows = conn.execute(
+            """
+            SELECT id, title, remind_at, status, created_at, triggered_at
+            FROM reminders
+            WHERE status = 'pending' AND user_id = ?
+            ORDER BY remind_at ASC
+            """,
+            (user_id,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT id, title, remind_at, status, created_at, triggered_at
+            FROM reminders
+            WHERE status = 'pending'
+            ORDER BY remind_at ASC
+            """
+        ).fetchall()
 
     conn.close()
 
@@ -799,6 +843,7 @@ def get_reminder(reminder_id):
         """
         SELECT
             id,
+            user_id,
             title,
             remind_at,
             status,
@@ -825,7 +870,8 @@ def get_reminder(reminder_id):
 def update_reminder_record(
     reminder_id,
     title,
-    remind_at
+    remind_at,
+    user_id=None
 ):
 
     conn = get_connection()
@@ -840,11 +886,14 @@ def update_reminder_record(
             triggered_at = NULL
         WHERE id = ?
         AND status = 'pending'
+        AND (? IS NULL OR user_id = ?)
         """,
         (
             title,
             remind_at,
             reminder_id,
+            user_id,
+            user_id,
         )
     )
 
@@ -871,7 +920,8 @@ def update_reminder_record(
 # ==========================================================
 
 def delete_reminder_record(
-    reminder_id
+    reminder_id,
+    user_id=None
 ):
 
     conn = get_connection()
@@ -883,9 +933,12 @@ def delete_reminder_record(
             status = 'cancelled'
         WHERE id = ?
         AND status = 'pending'
+        AND (? IS NULL OR user_id = ?)
         """,
         (
             reminder_id,
+            user_id,
+            user_id,
         )
     )
 
@@ -903,7 +956,8 @@ def delete_reminder_record(
 # ==========================================================
 
 def find_reminder_by_title(
-    title
+    title,
+    user_id=None
 ):
 
     conn = get_connection()
@@ -920,10 +974,13 @@ def find_reminder_by_title(
         FROM reminders
         WHERE status = 'pending'
         AND LOWER(title) LIKE LOWER(?)
+        AND (? IS NULL OR user_id = ?)
         ORDER BY remind_at ASC
         """,
         (
             f"%{title}%",
+            user_id,
+            user_id,
         )
     ).fetchall()
 

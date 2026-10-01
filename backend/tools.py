@@ -79,7 +79,7 @@ def create_task(title: str):
 # CREATE REMINDER
 # ============================================================
 
-def create_reminder(title: str, time: str):
+def create_reminder(title: str, time: str, user_id: str | None = None):
     try:
         parsed_time = dateparser.parse(
             time,
@@ -108,7 +108,8 @@ def create_reminder(title: str, time: str):
 
         reminder = create_reminder_record(
             title=title,
-            remind_at=remind_at
+            remind_at=remind_at,
+            user_id=user_id
         )
 
         return {
@@ -163,42 +164,65 @@ def browser_open(url: str):
 
 
 # ============================================================
+# GOOGLE CALENDAR
+# ============================================================
+
+def calendar_list_events_tool(start_time=None, end_time=None, max_results=20, user_id=None):
+    return calendar_list_events(start_time=start_time, end_time=end_time, max_results=max_results, user_id=user_id)
+
+
+def calendar_create_event_tool(title, start_time, end_time=None, description="", location="", attendees=None, user_id=None):
+    return calendar_create_event(title=title, start_time=start_time, end_time=end_time, description=description, location=location, attendees=attendees, user_id=user_id)
+
+
+def calendar_update_event_tool(event_id, title=None, start_time=None, end_time=None, description=None, location=None, user_id=None):
+    return calendar_update_event(event_id=event_id, title=title, start_time=start_time, end_time=end_time, description=description, location=location, user_id=user_id)
+
+
+def calendar_delete_event_tool(event_id, user_id=None):
+    return calendar_delete_event(event_id=event_id, user_id=user_id)
+
+
+# ============================================================
 # GOOGLE DRIVE
 # ============================================================
 
-def drive_list_files_tool(folder_id=None, max_results=20):
+def drive_list_files_tool(folder_id=None, max_results=20, user_id=None):
     return drive_list_files(
         folder_id=folder_id,
         max_results=max_results,
+        user_id=user_id,
     )
 
 
-def drive_search_tool(query, max_results=20):
+def drive_search_tool(query, max_results=20, user_id=None):
     return drive_search(
         query=query,
         max_results=max_results,
+        user_id=user_id,
     )
 
 
-def drive_read_file_tool(file_id, max_chars=50000):
+def drive_read_file_tool(file_id, max_chars=50000, user_id=None):
     return drive_read_file(
         file_id=file_id,
         max_chars=max_chars,
+        user_id=user_id,
     )
 # ============================================================
 # GOOGLE DOCS
 # ============================================================
 
-def docs_create_document_tool(title, content=""):
-    return docs_create_document(title=title, content=content)
+def docs_create_document_tool(title, content="", user_id=None):
+    return docs_create_document(title=title, content=content, user_id=user_id)
 
 
-def docs_read_document_tool(document_id, max_chars=50000):
-    return docs_read_document(document_id=document_id, max_chars=max_chars)
+def docs_read_document_tool(document_id, max_chars=50000, user_id=None):
+    return docs_read_document(document_id=document_id, max_chars=max_chars, user_id=user_id)
 
 
-def docs_append_text_tool(document_id, content):
-    return docs_append_text(document_id=document_id, content=content)
+def docs_append_text_tool(document_id, content, user_id=None):
+    return docs_append_text(document_id=document_id, content=content, user_id=user_id)
 
 
 # ============================================================
@@ -210,9 +234,10 @@ def sheets_create_spreadsheet_tool(
     values=None,
     range_name="Sheet1!A1",
     input_option="USER_ENTERED",
+    user_id=None,
 ):
     """Create a Sheet and optionally populate + read it back."""
-    created = sheets_create_spreadsheet(title=title)
+    created = sheets_create_spreadsheet(title=title, user_id=user_id)
 
     if created.get("status") != "success":
         return created
@@ -235,6 +260,7 @@ def sheets_create_spreadsheet_tool(
         range_name=range_name,
         values=values,
         input_option=input_option,
+        user_id=user_id,
     )
 
     if write_result.get("status") != "success":
@@ -251,6 +277,7 @@ def sheets_create_spreadsheet_tool(
     readback = sheets_read_values(
         spreadsheet_id=spreadsheet_id,
         range_name=range_name,
+        user_id=user_id,
     )
 
     readback_values = (
@@ -274,8 +301,8 @@ def sheets_create_spreadsheet_tool(
     }
 
 
-def sheets_read_values_tool(spreadsheet_id, range_name):
-    return sheets_read_values(spreadsheet_id=spreadsheet_id, range_name=range_name)
+def sheets_read_values_tool(spreadsheet_id, range_name, user_id=None):
+    return sheets_read_values(spreadsheet_id=spreadsheet_id, range_name=range_name, user_id=user_id)
 
 
 def sheets_write_values_tool(
@@ -283,6 +310,7 @@ def sheets_write_values_tool(
     range_name,
     values,
     input_option="USER_ENTERED",
+    user_id=None,
 ):
     if isinstance(spreadsheet_id, str) and (
         "{{" in spreadsheet_id or "}}" in spreadsheet_id
@@ -301,15 +329,16 @@ def sheets_write_values_tool(
         range_name=range_name,
         values=values,
         input_option=input_option,
+        user_id=user_id,
     )
 
 
-def sheets_append_values_tool(spreadsheet_id, range_name, values, input_option="USER_ENTERED"):
-    return sheets_append_values(spreadsheet_id=spreadsheet_id, range_name=range_name, values=values, input_option=input_option)
+def sheets_append_values_tool(spreadsheet_id, range_name, values, input_option="USER_ENTERED", user_id=None):
+    return sheets_append_values(spreadsheet_id=spreadsheet_id, range_name=range_name, values=values, input_option=input_option, user_id=user_id)
 
 
-def sheets_clear_values_tool(spreadsheet_id, range_name):
-    return sheets_clear_values(spreadsheet_id=spreadsheet_id, range_name=range_name)
+def sheets_clear_values_tool(spreadsheet_id, range_name, user_id=None):
+    return sheets_clear_values(spreadsheet_id=spreadsheet_id, range_name=range_name, user_id=user_id)
 
 
 # ============================================================
@@ -322,6 +351,7 @@ def send_email_tool(
     body,
     cc=None,
     bcc=None,
+    user_id=None,
 ):
     return send_email(
         to=to,
@@ -329,11 +359,12 @@ def send_email_tool(
         body=body,
         cc=cc,
         bcc=bcc,
+        user_id=user_id,
     )
 
 
-def email_list_recent(max_results=10):
-    return list_recent_emails(max_results=max_results)
+def email_list_recent(max_results=10, user_id=None):
+    return list_recent_emails(max_results=max_results, user_id=user_id)
 
 
 # ============================================================
@@ -546,6 +577,7 @@ def update_reminder(
     reminder_id=None,
     title=None,
     time=None,
+    user_id=None,
 ):
 
     try:
@@ -568,8 +600,9 @@ def update_reminder(
 
         if not reminder_id:
 
-            matches =find_reminder_by_title(
-                    title
+            matches = find_reminder_by_title(
+                    title,
+                    user_id=user_id
                 )
 
 
@@ -670,15 +703,11 @@ def update_reminder(
                 title = existing["title"]
 
 
-        updated =update_reminder_record(
-                reminder_id=
-                    reminder_id,
-
-                title=
-                    title or "Reminder",
-
-                remind_at=
-                    remind_at,
+        updated = update_reminder_record(
+                reminder_id=reminder_id,
+                title=title or "Reminder",
+                remind_at=remind_at,
+                user_id=user_id,
             )
 
 
@@ -720,6 +749,7 @@ def update_reminder(
 def delete_reminder(
     reminder_id=None,
     title=None,
+    user_id=None,
 ):
 
     try:
@@ -742,8 +772,9 @@ def delete_reminder(
 
         if not reminder_id:
 
-            matches =find_reminder_by_title(
-                    title
+            matches = find_reminder_by_title(
+                    title,
+                    user_id=user_id
                 )
 
 
@@ -777,8 +808,9 @@ def delete_reminder(
             reminder_id =matches[0]["id"]
 
 
-        deleted =delete_reminder_record(
-                reminder_id
+        deleted = delete_reminder_record(
+                reminder_id,
+                user_id=user_id,
             )
 
 

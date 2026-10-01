@@ -27,46 +27,13 @@ TOKEN_FILE = os.getenv(
 )
 
 
-def _get_credentials() -> Credentials:
-    """Load/refresh OAuth credentials or start local OAuth consent."""
-    creds: Optional[Credentials] = None
-
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-
-    if creds and creds.valid:
-        return creds
-
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        if not os.path.exists(CREDENTIALS_FILE):
-            raise FileNotFoundError(
-                f"Google OAuth credentials not found: {CREDENTIALS_FILE}. "
-                "Download a Desktop app OAuth client JSON from Google Cloud "
-                "and save it as credentials.json."
-            )
-
-        flow = InstalledAppFlow.from_client_secrets_file(
-            CREDENTIALS_FILE,
-            SCOPES,
-        )
-        creds = flow.run_local_server(port=0)
-
-    with open(TOKEN_FILE, "w", encoding="utf-8") as token:
-        token.write(creds.to_json())
-
-    return creds
+def _get_credentials(user_id: str) -> Credentials:
+    from google_auth import get_user_credentials
+    return get_user_credentials(user_id, SCOPES)
 
 
-def _service():
-    return build(
-        "calendar",
-        "v3",
-        credentials=_get_credentials(),
-        cache_discovery=False,
-    )
-
+def _service(user_id: str):
+    return build("calendar", "v3", credentials=_get_credentials(user_id), cache_discovery=False)
 
 def _as_rfc3339(value: str) -> str:
     """Validate an ISO/RFC3339 datetime and return an API-safe string."""
@@ -83,10 +50,11 @@ def calendar_list_events(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     max_results: int = 20,
+    user_id: str | None = None,
 ):
     """List the user's upcoming calendar events."""
     try:
-        service = _service()
+        service = _service(user_id)
 
         now = datetime.now().astimezone()
         time_min = _as_rfc3339(start_time) if start_time else now.isoformat()
@@ -141,6 +109,7 @@ def calendar_create_event(
     description: str = "",
     location: str = "",
     attendees: Optional[List[str]] = None,
+    user_id: str | None = None,
 ):
     """Create an event in the authenticated user's primary calendar."""
     try:
@@ -166,7 +135,7 @@ def calendar_create_event(
                 if email and email.strip()
             ]
 
-        service = _service()
+        service = _service(user_id)
         event = service.events().insert(
             calendarId="primary",
             body=body,
@@ -200,10 +169,11 @@ def calendar_update_event(
     end_time: Optional[str] = None,
     description: Optional[str] = None,
     location: Optional[str] = None,
+    user_id: str | None = None,
 ):
     """Update selected fields of an existing primary-calendar event."""
     try:
-        service = _service()
+        service = _service(user_id)
         event = service.events().get(
             calendarId="primary",
             eventId=event_id,
@@ -247,10 +217,10 @@ def calendar_update_event(
         }
 
 
-def calendar_delete_event(event_id: str):
+def calendar_delete_event(event_id: str, user_id: str | None = None):
     """Delete an event from the authenticated user's primary calendar."""
     try:
-        service = _service()
+        service = _service(user_id)
         service.events().delete(
             calendarId="primary",
             eventId=event_id,

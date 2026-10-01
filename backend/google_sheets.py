@@ -12,31 +12,17 @@ CREDENTIALS_FILE = os.getenv("GOOGLE_SHEETS_CREDENTIALS_FILE", os.path.join(BASE
 TOKEN_FILE = os.getenv("GOOGLE_SHEETS_TOKEN_FILE", os.path.join(BASE_DIR, "token_sheets.json"))
 
 
-def _get_credentials() -> Credentials:
-    creds: Optional[Credentials] = None
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-    if creds and creds.valid:
-        return creds
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    else:
-        if not os.path.exists(CREDENTIALS_FILE):
-            raise FileNotFoundError(f"Google OAuth credentials not found: {CREDENTIALS_FILE}")
-        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
-    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
-        f.write(creds.to_json())
-    return creds
+def _get_credentials(user_id: str) -> Credentials:
+    from google_auth import get_user_credentials
+    return get_user_credentials(user_id, SCOPES)
 
 
-def _service():
-    return build("sheets", "v4", credentials=_get_credentials(), cache_discovery=False)
+def _service(user_id: str):
+    return build("sheets", "v4", credentials=_get_credentials(user_id), cache_discovery=False)
 
-
-def sheets_create_spreadsheet(title: str):
+def sheets_create_spreadsheet(title: str, user_id: str | None = None):
     try:
-        result = _service().spreadsheets().create(body={"properties": {"title": title}}).execute()
+        result = _service(user_id).spreadsheets().create(body={"properties": {"title": title}}).execute()
         sid = result["spreadsheetId"]
         return {"status": "success", "type": "google_sheet", "spreadsheet": {
             "id": sid, "title": result.get("properties", {}).get("title", title),
@@ -46,9 +32,9 @@ def sheets_create_spreadsheet(title: str):
         return {"status": "error", "type": "google_sheet", "message": str(exc)}
 
 
-def sheets_read_values(spreadsheet_id: str, range_name: str):
+def sheets_read_values(spreadsheet_id: str, range_name: str, user_id: str | None = None):
     try:
-        result = _service().spreadsheets().values().get(
+        result = _service(user_id).spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=range_name,
             valueRenderOption="FORMATTED_VALUE"
         ).execute()
@@ -59,9 +45,9 @@ def sheets_read_values(spreadsheet_id: str, range_name: str):
         return {"status": "error", "type": "google_sheet_values", "message": str(exc)}
 
 
-def sheets_write_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED"):
+def sheets_write_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED", user_id: str | None = None):
     try:
-        result = _service().spreadsheets().values().update(
+        result = _service(user_id).spreadsheets().values().update(
             spreadsheetId=spreadsheet_id, range=range_name,
             valueInputOption=input_option, body={"values": values}
         ).execute()
@@ -72,9 +58,9 @@ def sheets_write_values(spreadsheet_id: str, range_name: str, values: List[List[
         return {"status": "error", "type": "google_sheet_update", "message": str(exc)}
 
 
-def sheets_append_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED"):
+def sheets_append_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED", user_id: str | None = None):
     try:
-        result = _service().spreadsheets().values().append(
+        result = _service(user_id).spreadsheets().values().append(
             spreadsheetId=spreadsheet_id, range=range_name,
             valueInputOption=input_option, insertDataOption="INSERT_ROWS",
             body={"values": values}
@@ -87,12 +73,14 @@ def sheets_append_values(spreadsheet_id: str, range_name: str, values: List[List
         return {"status": "error", "type": "google_sheet_append", "message": str(exc)}
 
 
-def sheets_clear_values(spreadsheet_id: str, range_name: str):
+def sheets_clear_values(spreadsheet_id: str, range_name: str, user_id: str | None = None):
     try:
-        result = _service().spreadsheets().values().clear(
+        result = _service(user_id).spreadsheets().values().clear(
             spreadsheetId=spreadsheet_id, range=range_name, body={}
         ).execute()
         return {"status": "success", "type": "google_sheet_clear", "spreadsheet_id": spreadsheet_id,
                 "range": range_name, "cleared_range": result.get("clearedRange", range_name)}
     except Exception as exc:
         return {"status": "error", "type": "google_sheet_clear", "message": str(exc)}
+
+
