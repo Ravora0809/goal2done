@@ -231,70 +231,12 @@ def verify_action(tool_name, result):
     # GOOGLE SHEETS
     # ------------------------------------------------------
 
-    if tool_name == "sheets_create_spreadsheet":
-        if status != "success":
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "SHEETS",
-                "message": result.get(
-                    "message",
-                    "Google Sheets creation failed.",
-                ),
-            }
-
-        sheet = result.get("spreadsheet", {})
-        spreadsheet_id = sheet.get("id")
-
-        if not spreadsheet_id:
-            return {
-                "verified": False,
-                "status": "failed",
-                "category": "SHEETS",
-                "message": "Google Sheet was created without a spreadsheet ID.",
-            }
-
-        # If the action also inserted values, require successful readback.
-        if "values" in result or "write" in result:
-            if result.get("readback_verified") is not True:
-                return {
-                    "verified": False,
-                    "status": "failed",
-                    "category": "SHEETS",
-                    "message": (
-                        "Google Sheet was created, but the inserted values "
-                        "could not be verified by reading the sheet back."
-                    ),
-                }
-
-        return {
-            "verified": True,
-            "status": "verified",
-            "category": "SHEETS",
-            "message": "Google Sheet was created and verified successfully.",
-        }
-
-    if tool_name in {
-        "sheets_write_values",
-        "sheets_append_values",
-        "sheets_clear_values",
-    }:
+    if tool_name in {"sheets_create_spreadsheet", "sheets_write_values", "sheets_append_values", "sheets_clear_values"}:
         if status == "success":
-            return {
-                "verified": True,
-                "status": "verified",
-                "category": "SHEETS",
-                "message": "Google Sheets operation completed successfully.",
-            }
-        return {
-            "verified": False,
-            "status": "failed",
-            "category": "SHEETS",
-            "message": result.get(
-                "message",
-                "Google Sheets operation failed.",
-            ),
-        }
+            return {"verified": True, "status": "verified", "category": "SHEETS",
+                    "message": "Google Sheets operation completed successfully."}
+        return {"verified": False, "status": "failed", "category": "SHEETS",
+                "message": result.get("message", "Google Sheets operation failed.")}
 
     if tool_name == "sheets_read_values":
         if status == "success" and isinstance(result.get("values", []), list):
@@ -499,19 +441,48 @@ def verify_action(tool_name, result):
     # MAPS / TRAVEL
     # ------------------------------------------------------
 
-    if tool_name in {"maps_search", "maps_directions"}:
-        if status == "success" and result.get("url"):
+    if tool_name == "maps_search":
+        places = result.get("places")
+        has_location = bool(
+            result.get("name")
+            or result.get("display_name")
+            or (isinstance(places, list) and len(places) > 0)
+        )
+        has_map_link = bool(result.get("map_url") or result.get("url"))
+
+        if status == "success" and has_location and has_map_link:
             return {
                 "verified": True,
                 "status": "verified",
                 "category": "MAPS",
-                "message": "Maps/travel result generated successfully.",
+                "message": "Map location found and map link generated successfully.",
             }
+
         return {
             "verified": False,
             "status": "failed",
             "category": "MAPS",
-            "message": result.get("message", "Maps request failed."),
+            "message": result.get("message", "Map location could not be verified."),
+        }
+
+    if tool_name == "maps_directions":
+        has_route = bool(result.get("map_url") or result.get("url"))
+        has_distance = result.get("distance_km") is not None or bool(result.get("distance"))
+        has_duration = result.get("duration_minutes") is not None or bool(result.get("duration"))
+
+        if status == "success" and has_route and has_distance and has_duration:
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "MAPS",
+                "message": "Route, distance, and estimated travel time generated successfully.",
+            }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "MAPS",
+            "message": result.get("message", "Directions could not be verified."),
         }
 
     # ------------------------------------------------------

@@ -403,20 +403,27 @@ MAPS / TRAVEL
 
 maps_search
 ------------------------------------------------------------
-Create a Google Maps search for a place/address.
+Search OpenStreetMap for a place, landmark, business, or address using Nominatim. No API key is required.
 Arguments:
 { "query": "..." }
 
 maps_directions
 ------------------------------------------------------------
-Create directions between two places. Optional route ETA is returned
-when GOOGLE_MAPS_API_KEY is configured.
+Calculate a driving route, distance, and ETA between two places using OpenStreetMap + OSRM. No API key is required.
 Arguments:
 {
   "origin": "...",
   "destination": "...",
-  "mode": "driving|walking|bicycling|transit"
+  "mode": "driving"
 }
+
+
+OpenStreetMap rules:
+- maps_search is read-only and safe.
+- maps_directions is read-only and safe.
+- Do not invent a location when the user has not supplied enough information.
+- The current public OSRM integration supports driving routes only.
+- Do not request a Google Maps API key for these actions.
 
 
 ============================================================

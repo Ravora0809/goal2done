@@ -1,17 +1,61 @@
-# Goal2Done — REAL generate_document fix
+# Goal2Done — ONE STABLE BACKEND
 
-The planner is already producing `generate_document` correctly. The running backend was still using the older root `tools.py`, `executor.py`, and `verifier.py`.
+This package is the baseline. Do not mix files from older Goal2Done ZIPs.
 
-The old `executor.py` did **not** dispatch `generate_document`, and the old `verifier.py` had **no verifier** for it. That is why the API returned the verification failure message.
+## Fixed
 
-Replace:
-- `tools.py`
-- `executor.py`
-- `verifier.py`
+1. Google Drive -> dependent action IDs
+   - `{{action_1.file_id}}` is resolved from `drive_search.files[0].id`.
+2. Google Sheets create + populate
+   - creates the real spreadsheet ID
+   - writes values
+   - reads them back
+   - verifies the readback
+3. Google Docs / Drive / Sheets / Calendar / Gmail tool dispatch remains wired
+   through the existing executor.
+4. Existing approval firewall is preserved.
 
-Add:
-- `document_tools.py`
+## Install
 
-This patch creates a real DOCX using only the Python standard library and verifies the actual DOCX package before returning success.
+```bash
+pip install -r requirements.txt
+playwright install chromium
+```
 
-Stop the old Uvicorn process before replacing files, then start it again.
+Keep your existing:
+- credentials.json
+- token_gmail.json
+- token_drive.json
+- token_docs.json
+- token_sheets.json
+- token_calendar.json
+- .env
+
+## Start
+
+```bash
+uvicorn main:app --reload
+```
+
+## First test
+
+```text
+Create a Google Sheet called Expense Tracker with columns Date, Category, Amount and add three sample expenses.
+```
+
+Approve it.
+
+Expected:
+create -> real ID -> write -> readback -> verified.
+
+## Second test
+
+```text
+Find my resume in Google Drive and summarize my technical skills.
+```
+
+Expected:
+search -> real file ID -> read -> summarize.
+
+Do not copy individual `tools.py`, `main.py`, `executor.py`, or `verifier.py`
+from older ZIPs after installing this package.

@@ -801,6 +801,99 @@ function ResultContent({
 
 
   /* =======================================================
+     OPENSTREETMAP / ROUTING
+  ======================================================= */
+
+  if (
+    tool === "maps_search" ||
+    tool === "maps_directions"
+  ) {
+
+    const places = Array.isArray(result.places)
+      ? result.places
+      : [];
+
+    const isDirections = tool === "maps_directions";
+
+    return (
+      <div
+        className="
+          rounded-xl
+          border
+          border-slate-200 dark:border-slate-800
+          bg-slate-50 dark:bg-slate-900/50
+          p-4
+        "
+      >
+
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              <Globe size={16} className="text-indigo-400" />
+              {isDirections ? "Driving route" : "OpenStreetMap result"}
+            </div>
+
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {isDirections
+                ? `${result.distance || "Distance unavailable"} · ${result.duration || "ETA unavailable"}`
+                : result.display_name || result.query || "Place found"}
+            </p>
+          </div>
+
+          {result.url && (
+            <a
+              href={result.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-indigo-400 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              Open map
+              <ExternalLink size={13} />
+            </a>
+          )}
+        </div>
+
+        {isDirections && result.origin && result.destination && (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/40">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">From</div>
+              <div className="mt-1 text-xs text-slate-700 dark:text-slate-300">{result.origin}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/40">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">To</div>
+              <div className="mt-1 text-xs text-slate-700 dark:text-slate-300">{result.destination}</div>
+            </div>
+          </div>
+        )}
+
+        {!isDirections && places.length > 1 && (
+          <div className="mt-3 space-y-2">
+            {places.slice(0, 5).map((place, index) => (
+              <a
+                key={`${place.osm_type || "place"}-${place.osm_id || index}`}
+                href={place.map_url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:bg-slate-900"
+              >
+                <span className="min-w-0 truncate text-xs text-slate-700 dark:text-slate-300">
+                  {place.display_name}
+                </span>
+                <ExternalLink size={13} className="shrink-0 text-slate-500" />
+              </a>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-3 text-[10px] text-slate-500">
+          OpenStreetMap data · Nominatim / OSRM
+        </div>
+      </div>
+    );
+  }
+
+
+  /* =======================================================
      BROWSER
   ======================================================= */
 
