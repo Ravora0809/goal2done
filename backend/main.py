@@ -8,6 +8,9 @@ from executor import execute_tool, run_tool
 from verifier import verify_action
 from firewall import requires_approval
 from google_calendar import calendar_list_events
+from google_drive import drive_list_files, drive_search, drive_read_file
+from google_docs import docs_create_document, docs_read_document, docs_append_text
+from google_sheets import sheets_create_spreadsheet, sheets_read_values, sheets_write_values, sheets_append_values, sheets_clear_values
 
 from database import (
     init_db,
@@ -72,6 +75,89 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ==========================================================
+# GOOGLE DOCS / SHEETS TEST ENDPOINTS
+# ==========================================================
+
+@app.post("/docs/create")
+def create_google_doc(title: str, content: str = ""):
+    return docs_create_document(title=title, content=content)
+
+
+@app.get("/docs/{document_id}")
+def get_google_doc(document_id: str, max_chars: int = 50000):
+    return docs_read_document(document_id=document_id, max_chars=max_chars)
+
+
+@app.post("/docs/{document_id}/append")
+def append_google_doc(document_id: str, content: str):
+    return docs_append_text(document_id=document_id, content=content)
+
+
+@app.post("/sheets/create")
+def create_google_sheet(title: str):
+    return sheets_create_spreadsheet(title=title)
+
+
+@app.get("/sheets/{spreadsheet_id}/values")
+def get_google_sheet_values(spreadsheet_id: str, range_name: str):
+    return sheets_read_values(spreadsheet_id=spreadsheet_id, range_name=range_name)
+
+
+@app.post("/sheets/{spreadsheet_id}/values")
+def write_google_sheet_values(spreadsheet_id: str, range_name: str, values: list, input_option: str = "USER_ENTERED"):
+    return sheets_write_values(spreadsheet_id=spreadsheet_id, range_name=range_name, values=values, input_option=input_option)
+
+
+@app.post("/sheets/{spreadsheet_id}/append")
+def append_google_sheet_values(spreadsheet_id: str, range_name: str, values: list, input_option: str = "USER_ENTERED"):
+    return sheets_append_values(spreadsheet_id=spreadsheet_id, range_name=range_name, values=values, input_option=input_option)
+
+
+@app.post("/sheets/{spreadsheet_id}/clear")
+def clear_google_sheet_values(spreadsheet_id: str, range_name: str):
+    return sheets_clear_values(spreadsheet_id=spreadsheet_id, range_name=range_name)
+
+
+
+
+# ==========================================================
+# GOOGLE DRIVE READ API
+# ==========================================================
+
+@app.get("/drive/files")
+def get_drive_files(
+    folder_id: str | None = None,
+    max_results: int = 20,
+):
+    return drive_list_files(
+        folder_id=folder_id,
+        max_results=max_results,
+    )
+
+
+@app.get("/drive/search")
+def search_drive_files(
+    query: str,
+    max_results: int = 20,
+):
+    return drive_search(
+        query=query,
+        max_results=max_results,
+    )
+
+
+@app.get("/drive/file/{file_id}")
+def read_drive_file(
+    file_id: str,
+    max_chars: int = 50000,
+):
+    return drive_read_file(
+        file_id=file_id,
+        max_chars=max_chars,
+    )
 
 
 # ==========================================================

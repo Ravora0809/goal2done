@@ -4,7 +4,7 @@
 
 import json
 
-from groq_client import client
+from llm_client import chat_completion, RECOVERY_MODELS
 
 
 RECOVERY_SYSTEM_PROMPT = """
@@ -54,6 +54,15 @@ Available tools:
        "title": "...",
        "time": "..."
    }
+
+6. send_message
+7. list_files
+8. search_files
+9. read_file
+10. generate_document
+11. maps_search
+12. maps_directions
+13. browser_action
 
 Rules:
 
@@ -116,8 +125,8 @@ COMPLETED ACTIONS:
 Create a recovery plan.
 """
 
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
+    response, used_model = chat_completion(
+        models=RECOVERY_MODELS,
         messages=[
             {
                 "role": "system",
@@ -129,8 +138,10 @@ Create a recovery plan.
             },
         ],
         temperature=0,
+        max_tokens=4096,
     )
 
+    print(f"[RECOVERY] Model used: {used_model}")
     content = response.choices[0].message.content.strip()
 
     # Remove markdown fences if the model adds them
@@ -183,6 +194,14 @@ Create a recovery plan.
         "generate_answer",
         "create_task",
         "create_reminder",
+        "send_message",
+        "list_files",
+        "search_files",
+        "read_file",
+        "generate_document",
+        "maps_search",
+        "maps_directions",
+        "browser_action",
     }
 
     validated_actions = []

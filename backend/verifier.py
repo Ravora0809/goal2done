@@ -152,6 +152,158 @@ def verify_action(tool_name, result):
         }
 
     # ------------------------------------------------------
+    # GOOGLE DRIVE - LIST / SEARCH
+    # ------------------------------------------------------
+
+    if tool_name in {"drive_list_files", "drive_search"}:
+
+        if status == "success":
+
+            files = result.get("files", [])
+
+            if isinstance(files, list):
+                return {
+                    "verified": True,
+                    "status": "verified",
+                    "category": "DRIVE",
+                    "message": (
+                        f"Google Drive returned {len(files)} file(s)."
+                    ),
+                }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "DRIVE",
+            "message": result.get(
+                "message",
+                "Google Drive files could not be retrieved.",
+            ),
+        }
+
+    # ------------------------------------------------------
+    # GOOGLE DRIVE - READ
+    # ------------------------------------------------------
+
+    if tool_name == "drive_read_file":
+
+        if status == "success" and result.get("file"):
+
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "DRIVE",
+                "message": (
+                    f"Google Drive file '{result['file'].get('name', 'file')}' "
+                    "was read successfully."
+                ),
+            }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "DRIVE",
+            "message": result.get(
+                "message",
+                "Google Drive file could not be read.",
+            ),
+        }
+
+    # ------------------------------------------------------
+    # GOOGLE DOCS
+    # ------------------------------------------------------
+
+    if tool_name in {"docs_create_document", "docs_append_text"}:
+        if status == "success":
+            return {"verified": True, "status": "verified", "category": "DOCS",
+                    "message": "Google Docs operation completed successfully."}
+        return {"verified": False, "status": "failed", "category": "DOCS",
+                "message": result.get("message", "Google Docs operation failed.")}
+
+    if tool_name == "docs_read_document":
+        if status == "success" and result.get("document") is not None:
+            return {"verified": True, "status": "verified", "category": "DOCS",
+                    "message": "Google Doc was read successfully."}
+        return {"verified": False, "status": "failed", "category": "DOCS",
+                "message": result.get("message", "Google Doc could not be read.")}
+
+    # ------------------------------------------------------
+    # GOOGLE SHEETS
+    # ------------------------------------------------------
+
+    if tool_name == "sheets_create_spreadsheet":
+        if status != "success":
+            return {
+                "verified": False,
+                "status": "failed",
+                "category": "SHEETS",
+                "message": result.get(
+                    "message",
+                    "Google Sheets creation failed.",
+                ),
+            }
+
+        sheet = result.get("spreadsheet", {})
+        spreadsheet_id = sheet.get("id")
+
+        if not spreadsheet_id:
+            return {
+                "verified": False,
+                "status": "failed",
+                "category": "SHEETS",
+                "message": "Google Sheet was created without a spreadsheet ID.",
+            }
+
+        # If the action also inserted values, require successful readback.
+        if "values" in result or "write" in result:
+            if result.get("readback_verified") is not True:
+                return {
+                    "verified": False,
+                    "status": "failed",
+                    "category": "SHEETS",
+                    "message": (
+                        "Google Sheet was created, but the inserted values "
+                        "could not be verified by reading the sheet back."
+                    ),
+                }
+
+        return {
+            "verified": True,
+            "status": "verified",
+            "category": "SHEETS",
+            "message": "Google Sheet was created and verified successfully.",
+        }
+
+    if tool_name in {
+        "sheets_write_values",
+        "sheets_append_values",
+        "sheets_clear_values",
+    }:
+        if status == "success":
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "SHEETS",
+                "message": "Google Sheets operation completed successfully.",
+            }
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "SHEETS",
+            "message": result.get(
+                "message",
+                "Google Sheets operation failed.",
+            ),
+        }
+
+    if tool_name == "sheets_read_values":
+        if status == "success" and isinstance(result.get("values", []), list):
+            return {"verified": True, "status": "verified", "category": "SHEETS",
+                    "message": "Google Sheet values were read successfully."}
+        return {"verified": False, "status": "failed", "category": "SHEETS",
+                "message": result.get("message", "Google Sheet values could not be read.")}
+
+    # ------------------------------------------------------
     # GOOGLE CALENDAR - LIST
     # ------------------------------------------------------
 
@@ -234,6 +386,151 @@ def verify_action(tool_name, result):
                 "message",
                 "Calendar event could not be deleted.",
             ),
+        }
+
+    # ------------------------------------------------------
+    # GMAIL - SEND
+    # ------------------------------------------------------
+
+    if tool_name == "send_email":
+
+        if status == "success" and result.get("message_id"):
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "EMAIL",
+                "message": "Email was sent successfully.",
+            }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "EMAIL",
+            "message": result.get(
+                "message",
+                "Email could not be sent.",
+            ),
+        }
+
+    # ------------------------------------------------------
+    # GMAIL - LIST
+    # ------------------------------------------------------
+
+    if tool_name == "email_list_recent":
+
+        if status == "success" and isinstance(result.get("emails", []), list):
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "EMAIL",
+                "message": (
+                    f"Gmail read successfully with {len(result.get('emails', []))} message(s)."
+                ),
+            }
+
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "EMAIL",
+            "message": result.get(
+                "message",
+                "Emails could not be read.",
+            ),
+        }
+
+    # ------------------------------------------------------
+    # MESSAGING
+    # ------------------------------------------------------
+
+    if tool_name == "send_message":
+        if status == "success":
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "MESSAGING",
+                "message": "Message was sent successfully.",
+            }
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "MESSAGING",
+            "message": result.get("message", "Message could not be sent."),
+        }
+
+    # ------------------------------------------------------
+    # FILES
+    # ------------------------------------------------------
+
+    if tool_name in {"list_files", "search_files", "read_file"}:
+        if status == "success":
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "FILES",
+                "message": "File operation completed successfully.",
+            }
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "FILES",
+            "message": result.get("message", "File operation failed."),
+        }
+
+    # ------------------------------------------------------
+    # DOCUMENT GENERATION
+    # ------------------------------------------------------
+
+    if tool_name == "generate_document":
+        if status == "success" and result.get("path"):
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "DOCUMENT",
+                "message": f"Document generated at {result.get('filename', result.get('path'))}.",
+            }
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "DOCUMENT",
+            "message": result.get("message", "Document generation failed."),
+        }
+
+    # ------------------------------------------------------
+    # MAPS / TRAVEL
+    # ------------------------------------------------------
+
+    if tool_name in {"maps_search", "maps_directions"}:
+        if status == "success" and result.get("url"):
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "MAPS",
+                "message": "Maps/travel result generated successfully.",
+            }
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "MAPS",
+            "message": result.get("message", "Maps request failed."),
+        }
+
+    # ------------------------------------------------------
+    # BROWSER ACTION
+    # ------------------------------------------------------
+
+    if tool_name == "browser_action":
+        if status == "success":
+            return {
+                "verified": True,
+                "status": "verified",
+                "category": "BROWSER",
+                "message": "Browser action completed successfully.",
+            }
+        return {
+            "verified": False,
+            "status": "failed",
+            "category": "BROWSER",
+            "message": result.get("message", "Browser action failed."),
         }
 
     # ------------------------------------------------------

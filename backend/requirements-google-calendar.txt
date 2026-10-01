@@ -2,3 +2,10 @@
 google-api-python-client>=2.149.0
 google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.1
+python-docx
+reportlab
+requests
+
+openai
+python-dotenv
+# Google Drive uses the same Google API client packages above.

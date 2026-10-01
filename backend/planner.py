@@ -1,6 +1,6 @@
 import json
-from groq_client import client
 from datetime import datetime
+from llm_client import chat_completion, PLANNER_MODELS
 
 SYSTEM_PROMPT = """
 You are the planning engine for Goal2Done.
@@ -207,6 +207,40 @@ Never silently modify or delete a reminder.
 update_reminder and delete_reminder
 must go through the approval firewall.
 
+email_list_recent
+------------------------------------------------------------
+Read recent Gmail message metadata.
+Use when the user asks to check, list, or review recent emails.
+This action is safe and does not modify email.
+
+Arguments:
+
+{
+  "max_results": 10
+}
+
+send_email
+------------------------------------------------------------
+Send an email from the user's authenticated Gmail account.
+This action ALWAYS requires user approval.
+
+Arguments:
+
+{
+  "to": "person@example.com",
+  "subject": "...",
+  "body": "...",
+  "cc": "optional",
+  "bcc": "optional"
+}
+
+Rules:
+- Never invent an email address.
+- Ask for the recipient if it is missing.
+- Ask for missing subject/body when required.
+- Never send without approval.
+- Preserve the user's requested wording and intent.
+
 calendar_list_events
 ------------------------------------------------------------
 Read upcoming events from the user's primary Google Calendar.
@@ -275,9 +309,307 @@ Calendar safety rules:
 - When creating events, preserve the user's timezone/date/time.
 
 
+send_email
+------------------------------------------------------------
+Send an email using the user's authenticated Gmail account.
+This action ALWAYS requires user approval.
+
+Arguments:
+
+{
+  "to": "person@example.com",
+  "subject": "...",
+  "body": "...",
+  "cc": "optional",
+  "bcc": "optional"
+}
+
+Rules:
+- Never invent an email address.
+- Ask for the recipient if it is missing.
+- Ask for missing subject/body when needed.
+- Never send without approval.
+- Preserve the user's requested wording and intent.
+
+email_list_recent
+------------------------------------------------------------
+Read recent Gmail message metadata.
+This action is safe and does not send or modify email.
+
+Arguments:
+
+{
+  "max_results": 10
+}
+
+
+============================================================
+MESSAGING
+============================================================
+
+send_message
+------------------------------------------------------------
+Send a message through the configured messaging provider.
+This action requires approval.
+
+Arguments:
+{
+  "platform": "telegram or imessage",
+  "recipient": "chat id or phone/contact identifier",
+  "message": "..."
+}
+
+Never invent a recipient. Ask for it if required.
+
+
+============================================================
+FILES / DOCUMENTS
+============================================================
+
+list_files
+------------------------------------------------------------
+List files in the Goal2Done workspace. Safe read-only action.
+Arguments:
+{ "directory": ".", "max_results": 50 }
+
+search_files
+------------------------------------------------------------
+Find files by filename in the Goal2Done workspace.
+Arguments:
+{ "query": "resume", "directory": ".", "max_results": 20 }
+
+read_file
+------------------------------------------------------------
+Read a text document from the Goal2Done workspace.
+Arguments:
+{ "path": "resume.txt", "max_chars": 50000 }
+
+
+generate_document
+------------------------------------------------------------
+Create a local PDF, DOCX, Markdown, or TXT document.
+Arguments:
+{
+  "format": "pdf|docx|md|txt",
+  "title": "...",
+  "content": "...",
+  "filename": "optional filename"
+}
+
+
+============================================================
+MAPS / TRAVEL
+============================================================
+
+maps_search
+------------------------------------------------------------
+Create a Google Maps search for a place/address.
+Arguments:
+{ "query": "..." }
+
+maps_directions
+------------------------------------------------------------
+Create directions between two places. Optional route ETA is returned
+when GOOGLE_MAPS_API_KEY is configured.
+Arguments:
+{
+  "origin": "...",
+  "destination": "...",
+  "mode": "driving|walking|bicycling|transit"
+}
+
+
+============================================================
+BROWSER ACTIONS
+============================================================
+
+browser_action
+------------------------------------------------------------
+Perform an explicit browser action on a website. This action requires approval.
+Use for update/cancel/submit workflows only when the target page and
+visible button/field are known. Never invent selectors or target text.
+Arguments:
+{
+  "url": "...",
+  "action": "click|fill|update|cancel|submit|back",
+  "target_text": "visible button/field label",
+  "value": "optional value",
+  "confirm_text": "optional confirmation button text"
+}
+
+Browser safety rules:
+- Never perform a consequential action without approval.
+- Never invent a booking/reservation/account ID.
+- If login is required and the browser profile is not authenticated,
+  explain that the user must authenticate the browser profile first.
+- For cancellation/update, verify the final page state when possible.
+
+
+
+============================================================
+GOOGLE DOCS
+============================================================
+
+docs_create_document
+------------------------------------------------------------
+Create a new Google Doc and optionally insert initial text.
+This action requires user approval.
+Arguments:
+{
+  "title": "...",
+  "content": "..."
+}
+
+docs_read_document
+------------------------------------------------------------
+Read the text content of an existing Google Doc.
+This action is read-only and does not require approval.
+Arguments:
+{
+  "document_id": "...",
+  "max_chars": 50000
+}
+
+docs_append_text
+------------------------------------------------------------
+Append text to an existing Google Doc.
+This action requires user approval.
+Arguments:
+{
+  "document_id": "...",
+  "content": "..."
+}
+
+============================================================
+GOOGLE SHEETS
+============================================================
+
+sheets_create_spreadsheet
+------------------------------------------------------------
+Create a new Google Sheets spreadsheet. It can also populate the sheet
+immediately and verify the inserted values by reading them back.
+This action requires user approval.
+Arguments:
+{
+  "title": "...",
+  "range_name": "Sheet1!A1",
+  "values": [["Name", "Score"], ["Alice", 95]],
+  "input_option": "USER_ENTERED"
+}
+
+When the user asks to create a new spreadsheet AND insert data, use ONE
+sheets_create_spreadsheet action with values. Never create a later
+sheets_write_values action using a placeholder such as
+{{action_1.spreadsheet_id}}.
+
+sheets_read_values
+------------------------------------------------------------
+Read values from a Google Sheet range using A1 notation.
+This action is read-only and does not require approval.
+Arguments:
+{
+  "spreadsheet_id": "...",
+  "range_name": "Sheet1!A1:D20"
+}
+
+sheets_write_values
+------------------------------------------------------------
+Write values to a Google Sheet range. Use USER_ENTERED when formulas or
+normal spreadsheet input should behave like a user typing into Sheets.
+This action requires user approval.
+Arguments:
+{
+  "spreadsheet_id": "...",
+  "range_name": "Sheet1!A1:B2",
+  "values": [["Name", "Score"], ["Alice", 95]],
+  "input_option": "USER_ENTERED"
+}
+
+sheets_append_values
+------------------------------------------------------------
+Append rows to a Google Sheet. This action requires user approval.
+Arguments:
+{
+  "spreadsheet_id": "...",
+  "range_name": "Sheet1!A:B",
+  "values": [["Alice", 95]],
+  "input_option": "USER_ENTERED"
+}
+
+sheets_clear_values
+------------------------------------------------------------
+Clear values from a Google Sheet range. This action requires user approval.
+Arguments:
+{
+  "spreadsheet_id": "...",
+  "range_name": "Sheet1!A1:B20"
+}
+
+============================================================
+GOOGLE DRIVE
+============================================================
+
+drive_list_files
+------------------------------------------------------------
+List files and folders the authenticated user can access in Google Drive.
+
+Use when the user asks to:
+- list Drive files
+- show Drive folders
+- see what is in a Drive folder
+
+Arguments:
+
+{
+  "folder_id": "optional folder ID",
+  "max_results": 20
+}
+
+This action is read-only and does not require approval.
+
+drive_search
+------------------------------------------------------------
+Search the user's Google Drive by filename or indexed/full text.
+
+Use when the user asks to:
+- find a file in Drive
+- find a resume, document, proposal, PDF, etc.
+- search Drive
+
+Arguments:
+
+{
+  "query": "...",
+  "max_results": 20
+}
+
+This action is read-only and does not require approval.
+
+drive_read_file
+------------------------------------------------------------
+Read the contents of a text file or Google Workspace document from Drive.
+
+Use after drive_search or drive_list_files when the actual file contents
+are needed to answer the user's request. Never invent a file ID.
+
+Arguments:
+
+{
+  "file_id": "...",
+  "max_chars": 50000
+}
+
+This action is read-only and does not require approval.
+
+
 ============================================================
 CORE PLANNING RULE
 ============================================================
+
+GOOGLE SHEETS DYNAMIC-ID RULE:
+When creating a new spreadsheet and inserting data, use one
+sheets_create_spreadsheet action with the values. Never put an unresolved
+placeholder such as {{action_1.spreadsheet_id}} into another action.
 
 Always plan for the COMPLETE user outcome.
 
@@ -663,8 +995,8 @@ Return ONLY valid JSON.
 def plan_goal(goal: str):
     current_datetime = datetime.now().astimezone().isoformat()
 
-    response = client.chat.completions.create(
-    model="openai/gpt-oss-120b",
+    response, used_model = chat_completion(
+    models=PLANNER_MODELS,
     messages=[
         {
             "role": "system",

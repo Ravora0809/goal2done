@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 
 import ReminderCard from "./components/ReminderCard";
-import ActionCard from "./components/ActionCard";
 
 const API = "http://127.0.0.1:8000";
 
@@ -54,6 +53,127 @@ function extractAnswer(plan) {
     plan?.answer ||
     plan?.message ||
     ""
+  );
+}
+
+
+function getApprovalLabel(action) {
+  const tool = action?.tool || "this action";
+  const args = action?.arguments || {};
+
+  if (tool === "docs_create_document") {
+    return `Create Google Doc “${args.title || "Untitled document"}”`;
+  }
+  if (tool === "docs_append_text") {
+    return `Update Google Doc “${args.document_id || "document"}”`;
+  }
+  if (tool === "sheets_create_spreadsheet") {
+    return `Create Google Sheet “${args.title || "Untitled spreadsheet"}”`;
+  }
+  if (tool === "calendar_create_event") {
+    return `Create calendar event “${args.title || "Untitled event"}”`;
+  }
+  if (tool === "calendar_update_event") return "Update a calendar event";
+  if (tool === "calendar_delete_event") return "Delete a calendar event";
+  if (tool === "create_reminder") return `Create reminder “${args.title || "Reminder"}”`;
+  if (tool === "update_reminder") return `Reschedule reminder “${args.title || "Reminder"}”`;
+  if (tool === "delete_reminder") return `Delete reminder “${args.title || "Reminder"}”`;
+  if (tool === "send_email") return `Send email to ${args.to || "the recipient"}`;
+  if (tool === "send_message") return `Send a message to ${args.recipient || "the recipient"}`;
+  if (tool === "browser_action") return "Make the requested website change";
+  return `Run ${tool.replaceAll("_", " ")}`;
+}
+
+function getCompletionMessage(action) {
+  const result = action?.result || {};
+  const tool = action?.tool || "";
+
+  if (tool === "docs_create_document" && result?.document) {
+    return {
+      text: `Done. I created “${result.document.title || "your Google Doc"}” and verified it successfully.`,
+      url: result.document.url,
+      linkLabel: "Open Google Doc",
+    };
+  }
+
+  if (tool === "sheets_create_spreadsheet" && result?.spreadsheet) {
+    return {
+      text: `Done. I created “${result.spreadsheet.title || "your Google Sheet"}” and verified it successfully.`,
+      url: result.spreadsheet.url,
+      linkLabel: "Open Google Sheet",
+    };
+  }
+
+  if (tool === "calendar_create_event" && result?.event) {
+    return { text: `Done. I created “${result.event.title || "the calendar event"}” and verified it successfully.` };
+  }
+
+  if (tool === "create_reminder" && result?.reminder) {
+    return { text: `Done. I created the reminder “${result.reminder.title || "Reminder"}” and verified it successfully.` };
+  }
+
+  if (tool === "send_email" && result?.status === "success") {
+    return { text: "Done. The email was sent and the result was verified." };
+  }
+
+  if (tool === "send_message" && result?.status === "success") {
+    return { text: "Done. The message was sent and the result was verified." };
+  }
+
+  if (action?.verification?.verified) {
+    return { text: "Done — the requested action was completed and verified." };
+  }
+
+  return { text: "I completed the action, but I could not verify the requested result." };
+}
+
+function getApprovalAction(plan) {
+  return (plan?.approvals_required || [])[0] || null;
+}
+
+function ApprovalBubble({ action, onApprove, onReject, loading }) {
+  if (!action) return null;
+
+  const label = getApprovalLabel(action);
+  const isLoading = loading === action.approval_id;
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+          <ShieldCheck size={17} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">
+            Approval needed
+          </div>
+          <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+            {label}
+          </div>
+          <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+            I’ll only perform this action after you approve it.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={loading !== null}
+              onClick={() => onApprove(action)}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading ? "Working…" : "Approve"}
+            </button>
+            <button
+              type="button"
+              disabled={loading !== null}
+              onClick={() => onReject(action)}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -109,7 +229,17 @@ function ChatBubble({ message, onApprove, onReject, approvalLoading }) {
           <div className="space-y-4">
             {message.content && (
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm leading-7 text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                {message.content}
+                <div className="whitespace-pre-wrap">{message.content}</div>
+                {message.link && (
+                  <a
+                    href={message.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-500"
+                  >
+                    {message.linkLabel || "Open"}
+                  </a>
+                )}
               </div>
             )}
 
@@ -139,45 +269,15 @@ function ChatBubble({ message, onApprove, onReject, approvalLoading }) {
               </div>
             )}
 
-            {plan?.actions?.length > 0 && (
-              <div className="space-y-3">
-                {plan.actions.map((action, index) => {
-                  const approval =
-                    (plan.approvals_required || []).find(
-                      (item) =>
-                        item.approval_id === action.approval_id ||
-                        item.execution_id === action.execution_id
-                    ) || action;
-
-                  const approvalId =
-                    approval?.approval_id || action?.approval_id;
-
-                  return (
-                    <ActionCard
-                      key={action.execution_id || action.approval_id || index}
-                      action={action}
-                      onApprove={
-                        approvalId
-                          ? () => onApprove(approval)
-                          : undefined
-                      }
-                      onReject={
-                        approvalId
-                          ? () => onReject(approval)
-                          : undefined
-                      }
-                    />
-                  );
-                })}
-              </div>
+            {plan?.status === "waiting_for_approval" && (
+              <ApprovalBubble
+                action={getApprovalAction(plan)}
+                onApprove={onApprove}
+                onReject={onReject}
+                loading={approvalLoading}
+              />
             )}
 
-            {message.plan?.status === "completed" && (
-              <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-                <CheckCircle2 size={18} />
-                Completed and verified. You can continue the conversation.
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -724,34 +824,43 @@ instead of executing the goal.
 
       if (data.status === "needs_clarification") {
         addAssistantMessage(
-          data.message ||
-            "I understand what you want to do. I need a few details before I can safely continue.",
-          {
-            questions: data.questions || [],
-            plan: data,
-          }
+          data.message || "I need a little more information before I continue.",
+          { questions: data.questions || [], plan: data }
         );
-      } else if (answer) {
-        addAssistantMessage(answer, { plan: data });
       } else if (data.status === "waiting_for_approval") {
+        // Keep the conversation natural. The approval control is rendered
+        // inline, while the internal plan/actions stay hidden.
         addAssistantMessage(
-          "I have prepared the next step. Please review the action below and approve it when you're ready.",
+          answer || "I’m ready for the next step. I just need your approval before I make the change.",
           { plan: data }
         );
       } else if (data.status === "completed") {
-        addAssistantMessage(
-          "Done. I completed the requested actions and verified the result.",
-          { plan: data }
-        );
+        // A normal conversational answer must win over the generic
+        // "completed" status. The backend may mark generate_answer as
+        // completed, but the user should see the actual answer.
+        if (answer) {
+          addAssistantMessage(answer, { plan: data });
+        } else {
+          const completedAction = [...(data.actions || [])].reverse().find(
+            (action) => action?.verification?.verified
+          );
+          const completion = getCompletionMessage(completedAction);
+          addAssistantMessage(completion.text, {
+            plan: data,
+            link: completion.url,
+            linkLabel: completion.linkLabel,
+          });
+        }
       } else if (data.status === "verification_failed") {
         addAssistantMessage(
-          "I couldn't verify the requested result. I’ve kept the execution details below so we can decide what to do next.",
+          "I couldn’t confirm that the requested result was completed. I won’t claim it was done when it wasn’t verified.",
           { plan: data }
         );
+      } else if (answer) {
+        addAssistantMessage(answer, { plan: data });
       } else {
         addAssistantMessage(
-          data.message ||
-            "I processed that request. Here's what happened.",
+          data.message || "I’ve processed your request.",
           { plan: data }
         );
       }
@@ -786,6 +895,8 @@ instead of executing the goal.
         throw new Error(data.detail || "Approval failed.");
       }
 
+      const completion = getCompletionMessage(data.action);
+
       setMessages((previous) => [
         ...previous,
         {
@@ -793,9 +904,11 @@ instead of executing the goal.
           role: "assistant",
           content:
             data.status === "completed"
-              ? "Approved. The action has been executed and verified."
-              : "Approved. The action has been processed.",
+              ? completion.text
+              : "The action was approved and processed.",
           time: new Date().toISOString(),
+          link: completion.url,
+          linkLabel: completion.linkLabel,
           plan: {
             ...data,
             status: data.status,

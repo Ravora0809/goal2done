@@ -25,6 +25,10 @@ build/
 .env
 credentials.json
 token_calendar.json
+token_drive.json
+token_gmail.json
+token_sheets.json
+token_docs.json
 .env
 *db
 __pycache__/
