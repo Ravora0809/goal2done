@@ -33,7 +33,8 @@ import {
   X,
 
 } from "lucide-react";
-
+import Privacy from "./components/Privacy";
+import Terms from "./components/Terms";
 
 
 import ReminderCard from "./components/ReminderCard";
@@ -1555,7 +1556,7 @@ function App() {
 
 
 
-  
+
 function getUserFacingResult(action) {
   const result = action?.result;
   if (!result) return null;
@@ -2127,7 +2128,15 @@ instead of executing the goal.
 
   );
 
+  const pathname = window.location.pathname;
 
+  if (pathname === "/privacy") {
+    return <Privacy />;
+  }
+
+  if (pathname === "/terms") {
+    return <Terms />;
+  }
 
   if (authLoading) {
     return (
