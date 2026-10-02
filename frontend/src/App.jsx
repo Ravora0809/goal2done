@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
 
@@ -16,6 +18,8 @@ import {
  ChevronRight,
 
  Clock3,
+
+ Trash2,
 
  History,
 
@@ -467,7 +471,18 @@ function ChatBubble({ message, onApprove, onReject, approvalLoading }) {
 
  <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm leading-7 text-slate-700 shadow-sm ">
 
- <div className="whitespace-pre-wrap">{message.content}</div>
+ <div className="leading-7 text-slate-700 [&_h1]:mb-3 [&_h1]:mt-1 [&_h1]:text-2xl [&_h1]:font-black [&_h1]:tracking-tight [&_h2]:mb-2 [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-extrabold [&_h2]:tracking-tight [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-extrabold [&_p]:my-2.5 [&_strong]:font-extrabold [&_em]:italic [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-6 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-6 [&_li]:pl-1 [&_a]:font-semibold [&_a]:text-indigo-600 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-indigo-500 [&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-slate-500 [&_code]:rounded-md [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-indigo-700 [&_pre]:my-4 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-slate-950 [&_pre]:p-4 [&_pre]:text-xs [&_pre]:leading-6 [&_pre]:text-slate-100 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-inherit [&_hr]:my-5 [&_hr]:border-slate-200 [&_table]:my-4 [&_table]:w-full [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-bold [&_td]:border [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-2">
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      a: ({ node, ...props }) => (
+        <a {...props} target="_blank" rel="noreferrer" />
+      ),
+    }}
+  >
+    {message.content}
+  </ReactMarkdown>
+</div>
 
  {message.link && (
 
@@ -2100,6 +2115,34 @@ instead of executing the goal.
 
 
 
+ function deleteConversation(conversationIdToDelete) {
+
+ const conversation = savedConversations.find(
+ (item) => item.id === conversationIdToDelete
+ );
+
+ if (!conversation) return;
+
+ const confirmed = window.confirm(
+ `Delete "${conversation.title || "this conversation"}"? This cannot be undone.`
+ );
+
+ if (!confirmed) return;
+
+ const nextConversations = savedConversations.filter(
+ (item) => item.id !== conversationIdToDelete
+ );
+
+ localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(nextConversations));
+ setSavedConversations(nextConversations);
+
+ if (conversationIdToDelete === conversationId) {
+ startNewChat();
+ }
+
+ }
+
+
  function startNewChat() {
 
  const nextId = makeId("conversation");
@@ -2285,46 +2328,45 @@ instead of executing the goal.
 
  return (
 
- <button
-
+ <div
  key={conversation.id}
-
- type="button"
-
- onClick={() => openConversation(conversation)}
-
- className={`group flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition ${
-
+ className={`group flex w-full items-center gap-1.5 rounded-xl px-2 py-1.5 transition ${
  active
-
- ? "border border-indigo-200 bg-indigo-50 text-indigo-700 "
-
- : "border border-transparent text-slate-600 hover:bg-slate-100 "
-
+ ? "border border-indigo-200 bg-indigo-50"
+ : "border border-transparent hover:bg-slate-100"
  }`}
-
  >
 
+ <button
+ type="button"
+ onClick={() => openConversation(conversation)}
+ className={`flex min-w-0 flex-1 items-start gap-2.5 rounded-lg px-1 py-1 text-left ${
+ active ? "text-indigo-700" : "text-slate-600"
+ }`}
+ >
  <History size={14} className={`mt-0.5 shrink-0 ${active ? "text-indigo-500" : "text-slate-400"}`} />
-
  <span className="min-w-0 flex-1">
-
- <span className="block truncate text-xs font-semibold">
-
- {conversation.title}
-
- </span>
-
+ <span className="block truncate text-xs font-semibold">{conversation.title}</span>
  <span className="mt-0.5 block text-[9px] text-slate-400">
-
  {new Date(conversation.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
-
  </span>
-
  </span>
-
  </button>
 
+ <button
+ type="button"
+ onClick={(event) => {
+ event.stopPropagation();
+ deleteConversation(conversation.id);
+ }}
+ className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus:opacity-100"
+ aria-label={`Delete conversation: ${conversation.title}`}
+ title="Delete conversation"
+ >
+ <Trash2 size={14} />
+ </button>
+
+ </div>
  );
 
  })
