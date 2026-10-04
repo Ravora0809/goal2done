@@ -1002,45 +1002,27 @@ Return ONLY valid JSON.
 def plan_goal(goal: str):
     current_datetime = datetime.now().astimezone().isoformat()
 
-    response, used_model = chat_completion(
-    models=PLANNER_MODELS,
-    messages=[
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT
-        },
-        {
-            "role": "user",
-            "content": f"""Current date and time:{current_datetime} Important date/time rules:
-            1. Resolve relative expressions such as:
-   - today
-   - tomorrow
-   - tonight
-   - next Monday
-   - in 2 hours
+    user_prompt = f"""Current date and time: {current_datetime}
 
-   using the current date/time above.
+Resolve relative dates such as today, tomorrow, tonight, next Monday, and in 2 hours using this datetime. Never treat tomorrow as today. For reminders and calendar actions, output explicit ISO-8601 datetimes when the user supplied a relative time.
 
-2. Never treat "tomorrow" as today.
-
-3. When creating reminders, output an explicit ISO-8601
-   datetime whenever the user gave a relative date/time.
-
-4. Preserve the user's intended date exactly.
-
-5. If the user says "tomorrow at 10 AM" and the current
-   date is September 30, 2026, the reminder MUST be
-   October 1, 2026 at 10:00 AM.
-
-User goal:
+USER GOAL:
 {goal}
-"""
-        }
-    ],
-    temperature=0
-)
 
-    content = response.choices[0].message.content
+Return ONLY the JSON object required by the system prompt.
+"""
+
+    response, used_model = chat_completion(
+        models=PLANNER_MODELS,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0,
+        max_tokens=1000,
+    )
+
+    content = response.choices[0].message.content or ""
 
     print("\n===== PLANNER OUTPUT =====")
     print(content)
@@ -1108,6 +1090,80 @@ User goal:
     if "actions" not in plan:
 
         plan["actions"] = []
+
+    # ======================================================
+    # EMPTY-PLAN GUARD + COMPACT RETRY
+    # ======================================================
+    # A valid JSON response with zero actions is not a successful plan
+    # unless the planner explicitly needs clarification. Previously this
+    # allowed the API to return HTTP 200 with no work performed.
+    if not plan["needs_clarification"] and not plan["actions"]:
+        retry_prompt = f"""Plan this user request now.
+
+USER GOAL:
+{goal}
+
+You MUST return at least one concrete action unless the request truly
+requires missing information. If clarification is required, set
+needs_clarification=true and provide the exact questions.
+
+Available tools include: search_web, browser_open, generate_answer,
+create_task, create_reminder, update_reminder, delete_reminder,
+email_list_recent, send_email, calendar_list_events,
+calendar_create_event, calendar_update_event, calendar_delete_event,
+send_message, list_files, search_files, read_file, generate_document,
+maps_search, maps_directions, browser_action, docs_create_document,
+docs_read_document, docs_append_text, sheets_create_spreadsheet,
+sheets_read_values, sheets_write_values, sheets_append_values,
+sheets_clear_values, drive_list_files, drive_search, drive_read_file.
+
+Return ONLY valid JSON with this shape:
+{{
+  "needs_clarification": false,
+  "questions": [],
+  "actions": [{{
+    "id": "action_1",
+    "tool": "...",
+    "arguments": {{}},
+    "depends_on": [],
+    "expected_outcome": "..."
+  }}]
+}}
+"""
+
+        retry_response, retry_model = chat_completion(
+            models=PLANNER_MODELS,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are Goal2Done's strict action planner. Never return an empty action list for an executable user request. Return only valid JSON.",
+                },
+                {"role": "user", "content": retry_prompt},
+            ],
+            temperature=0,
+            max_tokens=900,
+        )
+        retry_content = (retry_response.choices[0].message.content or "").strip()
+
+        if retry_content.startswith("```"):
+            retry_content = retry_content.replace("```json", "", 1).replace("```", "", 1).strip()
+            if retry_content.endswith("```"):
+                retry_content = retry_content[:-3].strip()
+
+        try:
+            retry_plan = json.loads(retry_content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Planner returned an empty plan and retry returned invalid JSON: {exc}")
+
+        if not isinstance(retry_plan, dict):
+            raise ValueError("Planner retry returned a non-object JSON value.")
+
+        plan = retry_plan
+        plan.setdefault("questions", [])
+        plan.setdefault("actions", [])
+
+        if not plan.get("needs_clarification") and not plan["actions"]:
+            raise ValueError("Planner returned no actions for an executable goal after retry.")
 
     # ======================================================
     # VALIDATE ACTIONS

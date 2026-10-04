@@ -1,3 +1,4 @@
+import { API, apiFetch } from "./api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -43,15 +44,6 @@ import Terms from "./components/Terms";
 import ReminderCard from "./components/ReminderCard";
 
 
-
-const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-
-async function apiFetch(path, options = {}) {
- return fetch(`${API}${path}`, {
- ...options,
- credentials: "include",
- });
-}
 
 
 

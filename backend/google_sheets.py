@@ -12,15 +12,33 @@ CREDENTIALS_FILE = os.getenv("GOOGLE_SHEETS_CREDENTIALS_FILE", os.path.join(BASE
 TOKEN_FILE = os.getenv("GOOGLE_SHEETS_TOKEN_FILE", os.path.join(BASE_DIR, "token_sheets.json"))
 
 
-def _get_credentials(user_id: str) -> Credentials:
-    from google_auth import get_user_credentials
-    return get_user_credentials(user_id, SCOPES)
+def _get_credentials(user_id: Optional[str] = None) -> Credentials:
+    if user_id:
+        from google_auth import get_user_credentials
+        return get_user_credentials(user_id, SCOPES)
+
+    creds: Optional[Credentials] = None
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    if creds and creds.valid:
+        return creds
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    else:
+        if not os.path.exists(CREDENTIALS_FILE):
+            raise FileNotFoundError(f"Google OAuth credentials not found: {CREDENTIALS_FILE}")
+        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
+        creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
+    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+        f.write(creds.to_json())
+    return creds
 
 
-def _service(user_id: str):
+def _service(user_id: Optional[str] = None):
     return build("sheets", "v4", credentials=_get_credentials(user_id), cache_discovery=False)
 
-def sheets_create_spreadsheet(title: str, user_id: str | None = None):
+
+def sheets_create_spreadsheet(title: str, user_id: Optional[str] = None):
     try:
         result = _service(user_id).spreadsheets().create(body={"properties": {"title": title}}).execute()
         sid = result["spreadsheetId"]
@@ -32,7 +50,7 @@ def sheets_create_spreadsheet(title: str, user_id: str | None = None):
         return {"status": "error", "type": "google_sheet", "message": str(exc)}
 
 
-def sheets_read_values(spreadsheet_id: str, range_name: str, user_id: str | None = None):
+def sheets_read_values(spreadsheet_id: str, range_name: str, user_id: Optional[str] = None):
     try:
         result = _service(user_id).spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=range_name,
@@ -45,7 +63,7 @@ def sheets_read_values(spreadsheet_id: str, range_name: str, user_id: str | None
         return {"status": "error", "type": "google_sheet_values", "message": str(exc)}
 
 
-def sheets_write_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED", user_id: str | None = None):
+def sheets_write_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED", user_id: Optional[str] = None):
     try:
         result = _service(user_id).spreadsheets().values().update(
             spreadsheetId=spreadsheet_id, range=range_name,
@@ -58,7 +76,7 @@ def sheets_write_values(spreadsheet_id: str, range_name: str, values: List[List[
         return {"status": "error", "type": "google_sheet_update", "message": str(exc)}
 
 
-def sheets_append_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED", user_id: str | None = None):
+def sheets_append_values(spreadsheet_id: str, range_name: str, values: List[List[Any]], input_option: str = "USER_ENTERED", user_id: Optional[str] = None):
     try:
         result = _service(user_id).spreadsheets().values().append(
             spreadsheetId=spreadsheet_id, range=range_name,
@@ -73,7 +91,7 @@ def sheets_append_values(spreadsheet_id: str, range_name: str, values: List[List
         return {"status": "error", "type": "google_sheet_append", "message": str(exc)}
 
 
-def sheets_clear_values(spreadsheet_id: str, range_name: str, user_id: str | None = None):
+def sheets_clear_values(spreadsheet_id: str, range_name: str, user_id: Optional[str] = None):
     try:
         result = _service(user_id).spreadsheets().values().clear(
             spreadsheetId=spreadsheet_id, range=range_name, body={}
@@ -84,3 +102,19 @@ def sheets_clear_values(spreadsheet_id: str, range_name: str, user_id: str | Non
         return {"status": "error", "type": "google_sheet_clear", "message": str(exc)}
 
 
+if __name__ == "__main__":
+    print("=" * 60)
+    print("Goal2Done - Google  sheets OAuth Test")
+    print("=" * 60)
+
+    try:
+        credentials = _get_credentials()
+
+        print()
+        print("✅ Google  sheets authentication successful!")
+        print(f"Token saved to: {TOKEN_FILE}")
+
+    except Exception as e:
+        print()
+        print("❌ Google sheets authentication failed")
+        print(f"Error: {e}")

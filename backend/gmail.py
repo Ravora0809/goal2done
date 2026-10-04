@@ -96,53 +96,62 @@ def send_email(
         }
 
 
-def list_recent_emails(max_results: int = 10, user_id: str | None = None):
-    """List recent Gmail message metadata without reading full message bodies."""
+def list_recent_emails(max_results: int = 5, user_id: str | None = None):
+    """List recent Gmail metadata with one list call + one batch metadata request."""
     try:
-        max_results = max(1, min(int(max_results), 50))
+        max_results = max(1, min(int(max_results), 10))
         service = _service(user_id)
-
         response = service.users().messages().list(
             userId="me",
             maxResults=max_results,
+            fields="messages(id,threadId),nextPageToken",
         ).execute()
 
         messages = []
-        for item in response.get("messages", []):
-            message = service.users().messages().get(
-                userId="me",
-                id=item["id"],
-                format="metadata",
-                metadataHeaders=["From", "To", "Subject", "Date"],
-            ).execute()
+        batch = service.new_batch_http_request()
 
+        def collect(request_id, result, exception):
+            if exception:
+                return
             headers = {
                 h.get("name", "").lower(): h.get("value", "")
-                for h in message.get("payload", {}).get("headers", [])
+                for h in result.get("payload", {}).get("headers", [])
             }
-
             messages.append({
-                "id": message.get("id"),
-                "thread_id": message.get("threadId"),
+                "id": result.get("id"),
+                "thread_id": result.get("threadId"),
                 "from": headers.get("from", ""),
                 "to": headers.get("to", ""),
                 "subject": headers.get("subject", ""),
                 "date": headers.get("date", ""),
-                "snippet": message.get("snippet", ""),
+                "snippet": result.get("snippet", "")[:500],
             })
 
+        for item in response.get("messages", []):
+            batch.add(
+                service.users().messages().get(
+                    userId="me",
+                    id=item["id"],
+                    format="metadata",
+                    metadataHeaders=["From", "To", "Subject", "Date"],
+                    fields="id,threadId,payload/headers,snippet",
+                ),
+                callback=collect,
+            )
+
+        if messages or response.get("messages"):
+            batch.execute()
+
+        messages.sort(key=lambda x: x.get("date", ""), reverse=True)
         return {
             "status": "success",
             "type": "email_list",
-            "emails": messages,
-            "count": len(messages),
+            "emails": messages[:max_results],
+            "count": len(messages[:max_results]),
         }
-
     except Exception as exc:
         return {
             "status": "error",
             "type": "email_list",
             "message": str(exc),
         }
-
-

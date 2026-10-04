@@ -11,7 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const API = "http://127.0.0.1:8000";
+import { API, apiFetch } from "../api";
 
 function ClarificationCard({
   plan,
@@ -64,7 +64,7 @@ ${additionalInformation}
     setPlan(null);
 
     try {
-      const response = await fetch(`${API}/goal`, {
+      const response = await apiFetch(`${API}/goal`, {
         method: "POST",
 
         headers: {

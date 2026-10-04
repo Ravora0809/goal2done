@@ -229,7 +229,30 @@ def process_goal(request: GoalRequest, user=Depends(get_current_user)):
     # 1. ASK PLANNER TO CREATE PLAN
     # ======================================================
 
-    plan = plan_goal(request.goal)
+    try:
+        plan = plan_goal(request.goal)
+
+    except RuntimeError as exc:
+        error_text = str(exc)
+
+        # The LLM router already attempted every configured provider/model.
+        # Do not expose that provider failure as an HTTP 500 to the frontend.
+        if error_text.startswith("LLM_FAILOVER_EXHAUSTED"):
+            return {
+                "goal": request.goal,
+                "status": "ai_temporarily_unavailable",
+                "message": (
+                    "AI providers are temporarily unavailable. "
+                    "Goal2Done tried the configured fallback models. "
+                    "Please try again in a moment."
+                ),
+                "actions": [],
+                "approvals_required": [],
+                "retryable": True,
+            }
+
+        # Preserve genuine application errors so they are not silently hidden.
+        raise
 
     # ======================================================
     # 2. MISSING INFORMATION

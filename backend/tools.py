@@ -155,7 +155,7 @@ from file_tools import list_files, search_files, read_file
 from document_tools import generate_document
 from maps_travel import maps_search, maps_directions
 from browser_actions import browser_action
-from llm_client import chat_completion, ANSWER_MODELS
+from llm_client import chat_completion
 
 
 def browser_open(url: str):
@@ -187,7 +187,9 @@ def calendar_delete_event_tool(event_id, user_id=None):
 # GOOGLE DRIVE
 # ============================================================
 
-def drive_list_files_tool(folder_id=None, max_results=20, user_id=None):
+def drive_list_files_tool(folder_id=None, max_results=8, user_id=None):
+    # Keep Drive listing small to reduce Google API traffic and LLM context.
+    max_results = min(int(max_results or 8), 8)
     return drive_list_files(
         folder_id=folder_id,
         max_results=max_results,
@@ -195,7 +197,9 @@ def drive_list_files_tool(folder_id=None, max_results=20, user_id=None):
     )
 
 
-def drive_search_tool(query, max_results=20, user_id=None):
+def drive_search_tool(query, max_results=8, user_id=None):
+    # Search only the most relevant files; avoid large result sets.
+    max_results = min(int(max_results or 8), 8)
     return drive_search(
         query=query,
         max_results=max_results,
@@ -203,7 +207,9 @@ def drive_search_tool(query, max_results=20, user_id=None):
     )
 
 
-def drive_read_file_tool(file_id, max_chars=50000, user_id=None):
+def drive_read_file_tool(file_id, max_chars=6500, user_id=None):
+    # Never send an entire large Drive document into the LLM.
+    max_chars = min(int(max_chars or 6500), 6500)
     return drive_read_file(
         file_id=file_id,
         max_chars=max_chars,
@@ -217,7 +223,9 @@ def docs_create_document_tool(title, content="", user_id=None):
     return docs_create_document(title=title, content=content, user_id=user_id)
 
 
-def docs_read_document_tool(document_id, max_chars=50000, user_id=None):
+def docs_read_document_tool(document_id, max_chars=6500, user_id=None):
+    # Bound Google Docs content before it reaches the model.
+    max_chars = min(int(max_chars or 6500), 6500)
     return docs_read_document(document_id=document_id, max_chars=max_chars, user_id=user_id)
 
 
@@ -363,7 +371,9 @@ def send_email_tool(
     )
 
 
-def email_list_recent(max_results=10, user_id=None):
+def email_list_recent(max_results=5, user_id=None):
+    # Gmail analysis is intentionally capped to reduce API calls and tokens.
+    max_results = min(int(max_results or 5), 5)
     return list_recent_emails(max_results=max_results, user_id=user_id)
 
 
@@ -424,18 +434,82 @@ def browser_action_tool(url, action, target_text="", value="", confirm_text=""):
 # ============================================================
 # GENERATE ANSWER
 # ============================================================
-def generate_answer(instruction: str, context: dict):
+def generate_answer(instruction: str, context: dict, task: str = "answer"):
+    """Generate the final response using a task-specific LLM route.
+
+    task can be: answer, gmail, docs, drive, fast, recovery, etc.
+    When omitted, infer the route from the previous tool results.
+    """
 
     try:
         goal = context.get("goal", "")
-
         previous_results = context.get("results", [])
 
-        # Only pass useful tool output to the LLM
+        # --------------------------------------------------
+        # Infer the best analysis model when the planner did
+        # not explicitly provide a task.
+        # --------------------------------------------------
+        if not task or task == "answer":
+            tool_names = {
+                str(item.get("tool", ""))
+                for item in previous_results
+                if isinstance(item, dict)
+            }
+
+            if "email_list_recent" in tool_names:
+                task = "gmail"
+            elif any(name.startswith("drive_") for name in tool_names):
+                task = "drive"
+            elif any(name.startswith("docs_") for name in tool_names):
+                task = "docs"
+            else:
+                task = "answer"
+
+        # --------------------------------------------------
+        # Compact connected-app results aggressively.
+        # Never send huge Gmail/Drive/Docs payloads to the LLM.
+        # --------------------------------------------------
+        compact_results = []
+
+        for item in previous_results[-8:]:
+            if not isinstance(item, dict):
+                continue
+
+            tool_name = item.get("tool", "")
+            result = item.get("result", item)
+
+            if isinstance(result, dict):
+                result = dict(result)
+
+                for key in ("content", "text", "message"):
+                    value = result.get(key)
+                    if isinstance(value, str):
+                        result[key] = value[:6500]
+
+                if isinstance(result.get("emails"), list):
+                    result["emails"] = result["emails"][:5]
+
+                if isinstance(result.get("results"), list):
+                    result["results"] = result["results"][:8]
+
+                if isinstance(result.get("files"), list):
+                    result["files"] = result["files"][:8]
+
+                compact_results.append({
+                    "tool": tool_name,
+                    "result": result,
+                })
+
+            elif isinstance(result, str):
+                compact_results.append({
+                    "tool": tool_name,
+                    "result": result[:6500],
+                })
+
         research_data = json.dumps(
-            previous_results,
-            indent=2,
-            ensure_ascii=False
+            compact_results,
+            ensure_ascii=False,
+            separators=(",", ":"),
         )
 
         prompt = f"""
@@ -447,106 +521,64 @@ USER GOAL:
 USER REQUEST:
 {instruction}
 
-RESEARCH / INFORMATION FROM PREVIOUS ACTIONS:
+INFORMATION FROM PREVIOUS ACTIONS:
 {research_data}
 
-Create the final response that should be shown directly to the user.
+Create the final response shown directly to the user.
 
-IMPORTANT:
-
-The user wants a CLEAN, SHORT, READABLE answer.
-
-Follow these rules:
-
-1. Answer the user's actual question directly.
-2. Do not dump research results.
-3. Do not repeat information.
-4. Do not mention Goal2Done, tools, planner, executor,
-   verification, execution, context, APIs, or internal processing.
-5. Do not use HTML.
-6. Do not use <br>, <div>, or other HTML tags.
-7. Use simple Markdown.
-8. Prefer short paragraphs and bullet points.
-9. Avoid huge tables unless the user explicitly asks for a table.
-10. Keep normal answers between approximately 100-300 words.
-11. If the question is simple, keep the answer around 50-150 words.
-12. Use headings only when they improve readability.
-13. Highlight important terms with **bold**.
-14. Do not provide unnecessary background information.
-15. Do not repeat the question.
-16. Do not add a long conclusion.
-
-For a simple technical question, use this structure when appropriate:
-
-### Topic — Quick Overview
-
-One or two sentence introduction.
-
-**Key points**
-- Point 1
-- Point 2
-- Point 3
-- Point 4
-- Point 5
-
-**Common uses**
-- Use 1
-- Use 2
-- Use 3
-
-**In short:** One concise summary.
-
-For research questions:
-
-### Short Answer
-
-One concise summary.
-
-### Key Findings
-
-1. **Finding 1** — short explanation
-2. **Finding 2** — short explanation
-3. **Finding 3** — short explanation
-4. **Finding 4** — short explanation
-5. **Finding 5** — short explanation
-
-### Recommendation / Next Step
-
-Only include this section if it is useful for the user's request.
-
-For study plans:
-
-### 7-Day Study Plan
-
-#### Day 1 — Topic
-- Task
-- Task
-- Task
-
-**Time:** ~3 hours
-
-Keep each day concise.
+Rules:
+1. Answer the user's actual request directly.
+2. Use the supplied action results; do not invent facts.
+3. Do not dump raw API responses or entire emails/documents.
+4. Do not mention internal tools, models, planners, APIs, or execution.
+5. Use concise Markdown.
+6. Prefer short paragraphs and bullets.
+7. Keep simple answers around 50-150 words.
+8. Keep normal research answers around 100-300 words.
+9. If the user asks for a summary, give the important findings first.
+10. Do not repeat the question.
 
 Return ONLY the final user-facing answer.
 """
 
+        # Per-task output budgets. The router itself also enforces a hard cap.
+        token_env = {
+            "planner": "PLANNER_MAX_TOKENS",
+            "answer": "ANSWER_MAX_TOKENS",
+            "gmail": "GMAIL_MAX_TOKENS",
+            "docs": "DOCS_MAX_TOKENS",
+            "drive": "DRIVE_MAX_TOKENS",
+            "fast": "FAST_MAX_TOKENS",
+            "tool": "TOOL_MAX_TOKENS",
+            "safety": "SAFETY_MAX_TOKENS",
+            "recovery": "RECOVERY_MAX_TOKENS",
+        }
+        default_tokens = {
+            "answer": 900,
+            "gmail": 900,
+            "docs": 1200,
+            "drive": 900,
+        }
+        env_name = token_env.get(task, "ANSWER_MAX_TOKENS")
+        max_tokens = int(os.getenv(env_name, str(default_tokens.get(task, 900))))
+
         response, used_model = chat_completion(
-            models=ANSWER_MODELS,
+            task=task,
             messages=[
                 {
                     "role": "system",
                     "content": (
                         "You are a helpful final-answer generator. "
-                        "Give the user the actual result they requested."
-                    )
+                        "Return only the answer requested by the user."
+                    ),
                 },
                 {
                     "role": "user",
-                    "content": prompt
-                }
+                    "content": prompt,
+                },
             ],
             temperature=0.2,
-            max_tokens=4096,
+            max_tokens=max_tokens,
         )
 
         answer = response.choices[0].message.content
@@ -556,16 +588,15 @@ Return ONLY the final user-facing answer.
             "type": "answer",
             "answer": answer,
             "model": used_model,
+            "task": task,
         }
 
     except Exception as e:
-
         return {
             "status": "error",
             "type": "answer",
-            "message": str(e)
+            "message": str(e),
         }
-
 
 
 

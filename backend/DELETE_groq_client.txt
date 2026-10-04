@@ -1,0 +1,2 @@
+Delete groq_client.py from the Goal2Done backend. It is no longer used.
+Also remove GROQ_API_KEY and any PLANNER_FALLBACK_*, RECOVERY_FALLBACK_*, ANSWER_FALLBACK_* variables from your .env/deployment environment.

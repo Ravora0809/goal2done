@@ -50,7 +50,7 @@ def _escape_drive_query_value(value: str) -> str:
 
 def drive_list_files(
     folder_id: Optional[str] = None,
-    max_results: int = 20,
+    max_results: int = 8,
     user_id: str | None = None,
 ):
     """List files/folders visible to the authenticated Drive account."""
@@ -89,7 +89,7 @@ def drive_list_files(
         }
 
 
-def drive_search(query: str, max_results: int = 20, user_id: str | None = None):
+def drive_search(query: str, max_results: int = 8, user_id: str | None = None):
     """Search Drive by filename and indexed/full text."""
     try:
         service = _service(user_id)
@@ -160,7 +160,7 @@ def _export_google_workspace_file(service, file_id: str, mime_type: str) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def drive_read_file(file_id: str, max_chars: int = 50000, user_id: str | None = None):
+def drive_read_file(file_id: str, max_chars: int = 6500, user_id: str | None = None):
     """Read text from a Drive file or return useful metadata for binaries."""
     try:
         service = _service(user_id)

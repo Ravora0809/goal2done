@@ -1,7 +1,5 @@
 # Environment variables
-.env
-.env.*
-!.env.example
+
 
 # Python
 __pycache__/
@@ -22,10 +20,7 @@ goal2done.db
 dist/
 build/
 .vite/
-.env
-.env
-.env.*
-!.env.example
+
 
 credentials.json
 token_*.json
